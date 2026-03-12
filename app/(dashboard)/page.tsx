@@ -1,53 +1,77 @@
-"use client";
-
-import { useState } from "react";
-import { PlusIcon } from "@/components/icons";
-import { AddExpensePanel } from "@/components/add-expense-panel";
+import { getDashboardData } from "@/lib/actions/dashboard";
 import { DonutChart } from "@/components/donut-chart";
-import { AI_ENABLED } from "@/lib/config";
+import { ExpenseButtonPanel } from "@/components/expense-button-panel";
 
-function AvatarStack({ count = 2, size = 32 }: { count?: number; size?: number }) {
-  const colors = ["var(--color-bg-brand-accent)", "var(--color-bg-brand-muted)", "var(--color-bg-brand-strong)"];
+function formatBRL(value: number) {
+  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function formatDate(date: Date) {
+  return new Date(date).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+}
+
+function AvatarStack({ members }: { members: { name: string; avatar?: string | null }[] }) {
+  const colors = [
+    "var(--color-bg-brand-accent)",
+    "var(--color-bg-brand-muted)",
+    "var(--color-bg-brand-strong)",
+  ];
+  const shown = members.slice(0, 3);
   return (
     <div style={{ display: "flex", alignItems: "center" }}>
-      {Array.from({ length: count }).map((_, i) => (
+      {shown.map((m, i) => (
         <div
           key={i}
+          title={m.name}
           style={{
-            width: size,
-            height: size,
+            width: 32,
+            height: 32,
             borderRadius: "50%",
             background: colors[i % colors.length],
             border: "2px solid var(--color-bg-default)",
             marginLeft: i > 0 ? -8 : 0,
-            zIndex: count - i,
+            zIndex: shown.length - i,
             position: "relative",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 11,
+            fontWeight: 600,
+            color: i === 2 ? "var(--color-fg-inverse)" : "var(--color-fg-default)",
           }}
-        />
+        >
+          {m.avatar ? (
+            <img src={m.avatar} alt={m.name} style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }} />
+          ) : (
+            m.name.charAt(0).toUpperCase()
+          )}
+        </div>
       ))}
     </div>
   );
 }
 
-const mockExpenses = [
-  { name: "Supermercado", category: "Alimentação", card: "Nubank", responsible: "Pedro", date: "12/03", value: "R$ 250,00" },
-  { name: "Gasolina", category: "Transporte", card: "Inter", responsible: "Ana", date: "11/03", value: "R$ 180,00" },
-  { name: "Netflix", category: "Lazer", card: "Nubank", responsible: "Pedro", date: "10/03", value: "R$ 55,90" },
-  { name: "Farmácia", category: "Saúde", card: "Inter", responsible: "Ana", date: "09/03", value: "R$ 89,00" },
-  { name: "Café", category: "Alimentação", card: "Nubank", responsible: "Pedro", date: "08/03", value: "R$ 12,00" },
-];
+export default async function DashboardPage() {
+  const data = await getDashboardData();
 
-const categoryLimits = [
-  { name: "Alimentação", percentage: 72 },
-  { name: "Transporte", percentage: 55 },
-  { name: "Lazer", percentage: 40 },
-  { name: "Saúde", percentage: 30 },
-  { name: "Educação", percentage: 15 },
-  { name: "Outros", percentage: 10 },
-];
+  if (!data) return null;
 
-export default function DashboardPage() {
-  const [panelOpen, setPanelOpen] = useState(false);
+  const { user, family, expenses, totalSpent, daysInMonth, categories, cards, memberSpending } = data;
+  const typeStats = data.typeStats ?? { avulsa: 0, fixa: 0, parcelada: 0 };
+
+  const totalBudget = family?.budget ?? 0;
+  const dailyBudget = daysInMonth && totalBudget > 0 ? totalBudget / daysInMonth : 0;
+
+  const donutSegments =
+    totalSpent > 0
+      ? [
+          { value: typeStats.avulsa || 0.001, color: "#A3A3A3" },
+          { value: typeStats.fixa || 0.001, color: "#0F8F4E" },
+          { value: typeStats.parcelada || 0.001, color: "#1A56DB" },
+        ]
+      : [{ value: 1, color: "var(--color-border-default)" }];
+
+  const panelMembers = memberSpending.map((m) => ({ userId: m.userId, name: m.name }));
 
   return (
     <>
@@ -71,44 +95,19 @@ export default function DashboardPage() {
             color: "#000000",
           }}
         >
-          Olá Pedro
+          Olá {user.name.split(" ")[0]}
         </h1>
-        <button
-          onClick={() => setPanelOpen(true)}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "var(--space-8)",
-            background: "var(--color-bg-brand-default)",
-            border: "none",
-            borderRadius: "var(--radius-2xl)",
-            padding: "8px 16px",
-            cursor: "pointer",
-          }}
-        >
-          <PlusIcon size={16} color="var(--color-fg-inverse)" />
-          <span
-            style={{
-              fontWeight: 600,
-              fontSize: 14,
-              color: "var(--color-fg-inverse)",
-              lineHeight: 1.5,
-            }}
-          >
-            Novo Gasto
-          </span>
-        </button>
+
+        <ExpenseButtonPanel
+          categories={categories.map((c) => ({ id: c.id, name: c.name }))}
+          cards={cards.map((c) => ({ id: c.id, name: c.name }))}
+          members={panelMembers}
+        />
       </div>
 
       {/* Main 2-column layout */}
-      <div
-        style={{
-          display: "flex",
-          gap: "var(--space-16)",
-          flex: 1,
-          width: "100%",
-        }}
-      >
+      <div style={{ display: "flex", gap: "var(--space-16)", flex: 1, width: "100%" }}>
+
         {/* Left Column — Budget Cards */}
         <div
           style={{
@@ -123,7 +122,7 @@ export default function DashboardPage() {
             gap: "var(--space-8)",
           }}
         >
-          {/* Card 1 — Orçamento Geral */}
+          {/* Card Geral */}
           <div
             style={{
               flex: 1,
@@ -136,94 +135,85 @@ export default function DashboardPage() {
               justifyContent: "space-between",
             }}
           >
-            <AvatarStack count={2} size={32} />
+            <AvatarStack members={memberSpending} />
             <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
               <span style={{ fontWeight: 600, fontSize: 14, color: "var(--color-fg-inverse)", lineHeight: 1.5 }}>
                 Orçamento Geral
               </span>
               <span style={{ fontWeight: 700, fontSize: 48, lineHeight: 1.1, letterSpacing: "-1px", color: "var(--color-fg-inverse)" }}>
-                R$ 00,00
+                {formatBRL(totalBudget)}
               </span>
               <span style={{ fontWeight: 600, fontSize: 14, color: "var(--color-fg-inverse)", lineHeight: 1.5 }}>
-                R$ 00,00/dia
+                {formatBRL(dailyBudget)}/dia
               </span>
             </div>
           </div>
 
-          {/* Card 2 — Membro 1 */}
-          <div
-            style={{
-              flex: 1,
-              background: "var(--color-bg-brand-accent)",
-              border: "var(--border-sm) solid var(--color-border-muted)",
-              borderRadius: "var(--radius-3xl)",
-              padding: "var(--space-24)",
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "flex-end",
-              gap: "var(--space-4)",
-            }}
-          >
-            <span style={{ fontWeight: 600, fontSize: 14, color: "var(--color-bg-brand-strong)", lineHeight: 1.5 }}>
-              De quem é
-            </span>
-            <span style={{ fontWeight: 700, fontSize: 48, lineHeight: 1.1, letterSpacing: "-1px", color: "var(--color-fg-default)" }}>
-              R$ 00,00
-            </span>
-            <span style={{ fontWeight: 600, fontSize: 14, color: "var(--color-fg-default)", lineHeight: 1.5 }}>
-              R$ 00,00/dia
-            </span>
-          </div>
-
-          {/* Card 3 — Membro 2 */}
-          <div
-            style={{
-              flex: 1,
-              background: "var(--color-bg-brand-muted)",
-              border: "var(--border-sm) solid var(--color-border-muted)",
-              borderRadius: "var(--radius-3xl)",
-              padding: "var(--space-24)",
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "flex-end",
-              gap: "var(--space-4)",
-            }}
-          >
-            <span style={{ fontWeight: 600, fontSize: 14, color: "var(--color-fg-default)", lineHeight: 1.5 }}>
-              De quem é
-            </span>
-            <span style={{ fontWeight: 700, fontSize: 48, lineHeight: 1.1, letterSpacing: "-1px", color: "var(--color-fg-default)" }}>
-              R$ 00,00
-            </span>
-            <span style={{ fontWeight: 600, fontSize: 14, color: "var(--color-fg-default)", lineHeight: 1.5 }}>
-              R$ 00,00/dia
-            </span>
-          </div>
-
-          {/* Card 4 — Membro 3 */}
-          <div
-            style={{
-              flex: 1,
-              background: "var(--color-bg-default)",
-              border: "var(--border-sm) solid var(--color-border-default)",
-              borderRadius: "var(--radius-3xl)",
-              padding: "var(--space-24)",
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "flex-end",
-              gap: "var(--space-4)",
-            }}
-          >
-            <span style={{ fontWeight: 600, fontSize: 14, color: "var(--color-bg-brand-strong)", lineHeight: 1.5 }}>
-              De quem é
-            </span>
-            <span style={{ fontWeight: 700, fontSize: 48, lineHeight: 1.1, letterSpacing: "-1px", color: "var(--color-bg-brand-strong)" }}>
-              R$ 00,00
-            </span>
-            <span style={{ fontWeight: 600, fontSize: 14, color: "var(--color-bg-brand-strong)", lineHeight: 1.5 }}>
-              R$ 00,00/dia
-            </span>
-          </div>
+          {/* Cards por membro */}
+          {memberSpending.length === 0 ? (
+            <div
+              style={{
+                flex: 1,
+                background: "var(--color-bg-brand-accent)",
+                border: "var(--border-sm) solid var(--color-border-muted)",
+                borderRadius: "var(--radius-3xl)",
+                padding: "var(--space-24)",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "flex-end",
+                gap: "var(--space-4)",
+              }}
+            >
+              <span style={{ fontWeight: 600, fontSize: 14, color: "var(--color-bg-brand-strong)", lineHeight: 1.5 }}>
+                Nenhum membro ainda
+              </span>
+            </div>
+          ) : (
+            memberSpending.map((member, i) => {
+              const bgColors = [
+                "var(--color-bg-brand-accent)",
+                "var(--color-bg-brand-muted)",
+                "var(--color-bg-default)",
+              ];
+              const labelColors = [
+                "var(--color-bg-brand-strong)",
+                "var(--color-fg-default)",
+                "var(--color-bg-brand-strong)",
+              ];
+              const valueColors = [
+                "var(--color-fg-default)",
+                "var(--color-fg-default)",
+                "var(--color-bg-brand-strong)",
+              ];
+              const borderColor = i === 2 ? "var(--color-border-default)" : "var(--color-border-muted)";
+              return (
+                <div
+                  key={member.userId}
+                  style={{
+                    flex: 1,
+                    background: bgColors[i % bgColors.length],
+                    border: `var(--border-sm) solid ${borderColor}`,
+                    borderRadius: "var(--radius-3xl)",
+                    padding: "var(--space-24)",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "flex-end",
+                    gap: "var(--space-4)",
+                  }}
+                >
+                  <span style={{ fontWeight: 600, fontSize: 14, color: labelColors[i % labelColors.length], lineHeight: 1.5 }}>
+                    {member.name}
+                  </span>
+                  <span style={{ fontWeight: 700, fontSize: 48, lineHeight: 1.1, letterSpacing: "-1px", color: valueColors[i % valueColors.length] }}>
+                    {formatBRL(member.spent)}
+                  </span>
+                  <span style={{ fontWeight: 600, fontSize: 14, color: valueColors[i % valueColors.length], lineHeight: 1.5 }}>
+                    {formatBRL(member.dailyBudget)}/dia
+                  </span>
+                </div>
+              );
+            })
+          )}
         </div>
 
         {/* Right Column */}
@@ -248,32 +238,16 @@ export default function DashboardPage() {
               gap: "var(--space-8)",
             }}
           >
-            {/* Section Header */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "8px 16px",
-              }}
-            >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 16px" }}>
               <span style={{ fontWeight: 400, fontSize: 16, color: "var(--color-fg-default)", lineHeight: 1.5 }}>
                 Últimos Gastos
               </span>
-              <span
-                style={{
-                  fontWeight: 300,
-                  fontSize: 12,
-                  letterSpacing: "0.2px",
-                  color: "var(--color-fg-default)",
-                  padding: "8px 16px",
-                  borderRadius: "var(--radius-2xl)",
-                  cursor: "pointer",
-                  lineHeight: 1.5,
-                }}
+              <a
+                href="/transactions"
+                style={{ fontWeight: 300, fontSize: 12, letterSpacing: "0.2px", color: "var(--color-fg-default)", padding: "8px 16px", borderRadius: "var(--radius-2xl)", cursor: "pointer", lineHeight: 1.5, textDecoration: "none" }}
               >
                 Ver tudo
-              </span>
+              </a>
             </div>
 
             {/* Table Header */}
@@ -289,163 +263,165 @@ export default function DashboardPage() {
                 width: "100%",
               }}
             >
-              <span style={{ fontWeight: 600, fontSize: 14, color: "var(--color-fg-default)", lineHeight: 1.5 }}>
-                Nome do Gasto
-              </span>
-              <span style={{ fontWeight: 300, fontSize: 14, color: "var(--color-fg-default)", textAlign: "center", lineHeight: 1.5 }}>
-                Categoria
-              </span>
-              <span style={{ fontWeight: 300, fontSize: 14, color: "var(--color-fg-default)", textAlign: "center", lineHeight: 1.5 }}>
-                Cartão
-              </span>
-              <span style={{ fontWeight: 300, fontSize: 14, color: "var(--color-fg-default)", textAlign: "center", lineHeight: 1.5 }}>
-                Responsável
-              </span>
-              <span style={{ fontWeight: 300, fontSize: 14, color: "var(--color-fg-default)", textAlign: "center", lineHeight: 1.5 }}>
-                Data
-              </span>
-              <span style={{ fontWeight: 300, fontSize: 14, color: "var(--color-fg-default)", textAlign: "center", lineHeight: 1.5 }}>
-                Valor
-              </span>
+              <span style={{ fontWeight: 600, fontSize: 14, color: "var(--color-fg-default)", lineHeight: 1.5 }}>Nome do Gasto</span>
+              <span style={{ fontWeight: 300, fontSize: 14, color: "var(--color-fg-default)", textAlign: "center", lineHeight: 1.5 }}>Categoria</span>
+              <span style={{ fontWeight: 300, fontSize: 14, color: "var(--color-fg-default)", textAlign: "center", lineHeight: 1.5 }}>Cartão</span>
+              <span style={{ fontWeight: 300, fontSize: 14, color: "var(--color-fg-default)", textAlign: "center", lineHeight: 1.5 }}>Responsável</span>
+              <span style={{ fontWeight: 300, fontSize: 14, color: "var(--color-fg-default)", textAlign: "center", lineHeight: 1.5 }}>Data</span>
+              <span style={{ fontWeight: 300, fontSize: 14, color: "var(--color-fg-default)", textAlign: "center", lineHeight: 1.5 }}>Valor</span>
             </div>
 
             {/* Table Body */}
-            <div
-              style={{
-                background: "var(--color-bg-default)",
-                border: "var(--border-sm) solid var(--color-border-muted)",
-                borderRadius: "var(--radius-3xl)",
-              }}
-            >
-              {mockExpenses.map((expense, i) => (
-                <div
-                  key={i}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "2fr 1.2fr 1fr 1fr 1fr 1fr",
-                    alignItems: "center",
-                    gap: "var(--space-8)",
-                    padding: "16px 24px",
-                    borderBottom: i < mockExpenses.length - 1 ? "var(--border-sm) solid var(--color-border-muted)" : "none",
-                    width: "100%",
-                  }}
-                >
-                  <span style={{ fontWeight: 600, fontSize: 14, color: "var(--color-fg-default)", lineHeight: 1.5 }}>
-                    {expense.name}
-                  </span>
-                  <span style={{ display: "flex", justifyContent: "center" }}>
-                    <span
-                      style={{
-                        background: "var(--color-bg-muted)",
-                        padding: "2px 4px",
-                        borderRadius: "var(--radius-2xl)",
-                        fontWeight: 600,
-                        fontSize: 12,
-                        color: "var(--color-fg-muted)",
-                        lineHeight: 1.5,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {expense.category}
+            {expenses.length === 0 ? (
+              <div
+                style={{
+                  padding: "32px 24px",
+                  textAlign: "center",
+                  color: "var(--color-fg-subtle)",
+                  fontSize: 14,
+                  fontWeight: 400,
+                  border: "var(--border-sm) solid var(--color-border-muted)",
+                  borderRadius: "var(--radius-3xl)",
+                }}
+              >
+                Nenhum gasto registrado ainda
+              </div>
+            ) : (
+              <div
+                style={{
+                  background: "var(--color-bg-default)",
+                  border: "var(--border-sm) solid var(--color-border-muted)",
+                  borderRadius: "var(--radius-3xl)",
+                }}
+              >
+                {expenses.map((expense, i) => (
+                  <div
+                    key={expense.id}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "2fr 1.2fr 1fr 1fr 1fr 1fr",
+                      alignItems: "center",
+                      gap: "var(--space-8)",
+                      padding: "16px 24px",
+                      borderBottom: i < expenses.length - 1 ? "var(--border-sm) solid var(--color-border-muted)" : "none",
+                      width: "100%",
+                    }}
+                  >
+                    <span style={{ fontWeight: 600, fontSize: 14, color: "var(--color-fg-default)", lineHeight: 1.5 }}>
+                      {expense.name}
                     </span>
-                  </span>
-                  <span style={{ fontWeight: 400, fontSize: 12, color: "var(--color-fg-default)", textAlign: "center", lineHeight: 1.5 }}>
-                    {expense.card}
-                  </span>
-                  <span style={{ fontWeight: 400, fontSize: 12, color: "var(--color-fg-default)", textAlign: "center", lineHeight: 1.5 }}>
-                    {expense.responsible}
-                  </span>
-                  <span style={{ fontWeight: 400, fontSize: 12, color: "var(--color-fg-default)", textAlign: "center", lineHeight: 1.5 }}>
-                    {expense.date}
-                  </span>
-                  <span style={{ fontWeight: 600, fontSize: 12, color: "var(--color-fg-brand)", textAlign: "center", lineHeight: 1.5 }}>
-                    {expense.value}
-                  </span>
-                </div>
-              ))}
-            </div>
+                    <span style={{ display: "flex", justifyContent: "center" }}>
+                      {expense.category ? (
+                        <span
+                          style={{
+                            background: "var(--color-bg-muted)",
+                            padding: "2px 4px",
+                            borderRadius: "var(--radius-2xl)",
+                            fontWeight: 600,
+                            fontSize: 12,
+                            color: "var(--color-fg-muted)",
+                            lineHeight: 1.5,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {expense.category.name}
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: 12, color: "var(--color-fg-subtle)" }}>—</span>
+                      )}
+                    </span>
+                    <span style={{ fontWeight: 400, fontSize: 12, color: "var(--color-fg-default)", textAlign: "center", lineHeight: 1.5 }}>
+                      {expense.card?.name ?? "—"}
+                    </span>
+                    <span style={{ fontWeight: 400, fontSize: 12, color: "var(--color-fg-default)", textAlign: "center", lineHeight: 1.5 }}>
+                      {expense.responsible.name.split(" ")[0]}
+                    </span>
+                    <span style={{ fontWeight: 400, fontSize: 12, color: "var(--color-fg-default)", textAlign: "center", lineHeight: 1.5 }}>
+                      {formatDate(expense.date)}
+                    </span>
+                    <span style={{ fontWeight: 600, fontSize: 12, color: "var(--color-fg-brand)", textAlign: "center", lineHeight: 1.5 }}>
+                      {formatBRL(expense.amount)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* Bottom Row — 2 cards */}
-          <div
-            style={{
-              display: "flex",
-              gap: "var(--space-16)",
-              flex: 1,
-            }}
-          >
+          {/* Bottom Row */}
+          <div style={{ display: "flex", gap: "var(--space-16)", flex: 1 }}>
+
             {/* Divisão do Orçamento */}
             <div
               style={{
                 flex: 1,
-                background: "var(--color-bg-default)",
-                border: "var(--border-sm) solid var(--color-border-muted)",
-                borderRadius: "var(--radius-4xl)",
-                padding: "16px 16px 36px 16px",
+                background: "#FFFFFF",
+                border: "1px solid #F5F5F5",
+                borderRadius: 32,
+                padding: "24px 24px 32px",
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
-                gap: "var(--space-24)",
+                gap: 24,
               }}
             >
-              {/* Card Header */}
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  width: "100%",
-                  padding: "8px 0",
-                }}
-              >
-                <span style={{ fontWeight: 400, fontSize: 16, color: "var(--color-fg-default)", lineHeight: 1.5 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+                <span style={{ fontWeight: 400, fontSize: 16, color: "#0A0A0A", lineHeight: 1.5 }}>
                   Divisão do Orçamento
                 </span>
-                <AvatarStack count={2} size={24} />
+                <AvatarStack members={memberSpending.map((m) => ({ name: m.name, avatar: m.avatar }))} />
               </div>
 
-              {/* Donut Chart */}
               <DonutChart
-                segments={[
-                  { value: 50, color: "var(--color-bg-brand-default)" },
-                  { value: 30, color: "var(--color-bg-brand-accent)" },
-                  { value: 20, color: "var(--color-bg-brand-strong)" },
-                ]}
-                centerLabel="R$ 000,00"
-                centerSublabel="De R$ 000,00"
+                segments={donutSegments}
+                size={200}
+                strokeWidth={32}
+                centerLabel={formatBRL(totalSpent)}
+                centerSublabel={totalBudget > 0 ? `De ${formatBRL(totalBudget)}` : "Total gasto"}
               />
 
-              {/* Legend */}
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "var(--space-8)",
-                  width: "100%",
-                  padding: "0 16px",
-                }}
-              >
+              <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", alignSelf: "stretch" }}>
                 {[
-                  { color: "var(--color-bg-subtle)", textColor: "var(--color-fg-default)", label: "Orçamento" },
-                  { color: "var(--color-bg-brand-accent)", textColor: "var(--color-fg-default)", label: "Gastos Fixos" },
-                  { color: "var(--color-bg-brand-strong)", textColor: "var(--color-fg-inverse)", label: "Outros Gastos" },
-                ].map((item, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: "var(--space-8)" }}>
-                    <span
+                  { color: "#A3A3A3", label: "Avulsa", value: typeStats.avulsa },
+                  { color: "#0F8F4E", label: "Fixa", value: typeStats.fixa },
+                  { color: "#1A56DB", label: "Parcelada", value: typeStats.parcelada },
+                ].map((item, i) => {
+                  const pct = totalSpent > 0 ? Math.round((item.value / totalSpent) * 100) : 0;
+                  return (
+                    <div
+                      key={i}
                       style={{
-                        background: item.color,
-                        color: item.textColor,
-                        padding: "4px 8px",
-                        borderRadius: "var(--radius-lg)",
-                        fontWeight: 600,
-                        fontSize: 12,
-                        lineHeight: 1.5,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 12,
                       }}
                     >
-                      {item.label}
-                    </span>
-                  </div>
-                ))}
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div
+                          style={{
+                            width: 12,
+                            height: 12,
+                            borderRadius: 4,
+                            background: item.color,
+                            flexShrink: 0,
+                          }}
+                        />
+                        <span style={{ fontSize: 12, fontWeight: 400, color: "#525252", lineHeight: 1.5 }}>
+                          {item.label}
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: "#0A0A0A", lineHeight: 1.5 }}>
+                          {formatBRL(item.value)}
+                        </span>
+                        <span style={{ fontSize: 12, fontWeight: 400, color: "#A3A3A3", lineHeight: 1.5, minWidth: 36 }}>
+                          {pct}%
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -462,85 +438,48 @@ export default function DashboardPage() {
                 gap: "var(--space-8)",
               }}
             >
-              {/* Card Header */}
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  padding: "8px 0",
-                }}
-              >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0" }}>
                 <span style={{ fontWeight: 400, fontSize: 16, color: "var(--color-fg-default)", lineHeight: 1.5 }}>
                   Limite por Categoria
                 </span>
-                <span
-                  style={{
-                    fontWeight: 300,
-                    fontSize: 12,
-                    letterSpacing: "0.2px",
-                    color: "var(--color-fg-default)",
-                    cursor: "pointer",
-                    lineHeight: 1.5,
-                  }}
-                >
+                <span style={{ fontWeight: 300, fontSize: 12, letterSpacing: "0.2px", color: "var(--color-fg-default)", cursor: "pointer", lineHeight: 1.5 }}>
                   Ver mais
                 </span>
               </div>
 
-              {/* Category items */}
-              {categoryLimits.map((cat, i) => (
-                <div
-                  key={i}
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "var(--space-8)",
-                    padding: "0 8px",
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontWeight: 300, fontSize: 12, letterSpacing: "0.2px", color: "var(--color-fg-default)", lineHeight: 1.5 }}>
-                      {cat.name}
-                    </span>
-                    <span style={{ fontWeight: 300, fontSize: 12, letterSpacing: "0.2px", color: "var(--color-fg-default)", lineHeight: 1.5 }}>
-                      {cat.percentage}%
-                    </span>
+              {categories.length === 0 ? (
+                <p style={{ fontSize: 12, color: "var(--color-fg-subtle)", padding: "8px", fontWeight: 300 }}>
+                  Nenhuma categoria cadastrada
+                </p>
+              ) : (
+                categories.map((cat) => (
+                  <div key={cat.id} style={{ display: "flex", flexDirection: "column", gap: "var(--space-8)", padding: "0 8px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontWeight: 300, fontSize: 12, letterSpacing: "0.2px", color: "var(--color-fg-default)", lineHeight: 1.5 }}>
+                        {cat.name}
+                      </span>
+                      <span style={{ fontWeight: 300, fontSize: 12, letterSpacing: "0.2px", color: "var(--color-fg-default)", lineHeight: 1.5 }}>
+                        {cat.percentage}%
+                      </span>
+                    </div>
+                    <div style={{ background: "var(--color-bg-subtle)", height: 8, borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
+                      <div
+                        style={{
+                          background: "var(--color-bg-brand-default)",
+                          height: "100%",
+                          borderRadius: "var(--radius-lg)",
+                          width: `${cat.percentage}%`,
+                          transition: "width 0.3s",
+                        }}
+                      />
+                    </div>
                   </div>
-                  <div
-                    style={{
-                      background: "var(--color-bg-subtle)",
-                      height: 8,
-                      borderRadius: "var(--radius-lg)",
-                      overflow: "hidden",
-                    }}
-                  >
-                    <div
-                      style={{
-                        background: "var(--color-bg-brand-default)",
-                        height: "100%",
-                        borderRadius: "var(--radius-lg)",
-                        width: `${cat.percentage}%`,
-                        transition: "width 0.3s",
-                      }}
-                    />
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </div>
       </div>
-
-      {/* Slot reservado para AI Insights */}
-      {AI_ENABLED && (
-        <div style={{ marginTop: "var(--space-16)" }}>
-          {/* AIInsightsCard será renderizado aqui quando AI_ENABLED = true */}
-        </div>
-      )}
-
-      {/* Add Expense Panel */}
-      <AddExpensePanel open={panelOpen} onClose={() => setPanelOpen(false)} />
     </>
   );
 }

@@ -1,11 +1,11 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { login } from "@/lib/actions/auth";
+import { register } from "@/lib/actions/auth";
 import { EyeIcon } from "@/components/icons";
 
-export default function LoginPage() {
-  const [state, formAction, isPending] = useActionState(login, null);
+export default function RegisterPage() {
+  const [state, formAction, isPending] = useActionState(register, null);
   const [showPassword, setShowPassword] = useState(false);
 
   return (
@@ -67,10 +67,50 @@ export default function LoginPage() {
               color: "var(--color-bg-subtle)",
             }}
           >
-            Acesse sua conta
+            Crie sua conta
           </h1>
 
           <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-8)" }}>
+            {/* Nome */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
+              <label
+                htmlFor="name"
+                style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.5, color: "var(--color-fg-subtle)" }}
+              >
+                Nome
+              </label>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  background: "#171717",
+                  border: "1px solid #404040",
+                  borderRadius: "var(--radius-2xl)",
+                  padding: "10px 12px",
+                }}
+              >
+                <input
+                  id="name"
+                  name="name"
+                  type="text"
+                  placeholder="Seu nome completo"
+                  required
+                  autoComplete="name"
+                  style={{
+                    flex: 1,
+                    border: "none",
+                    outline: "none",
+                    background: "transparent",
+                    fontFamily: "inherit",
+                    fontWeight: 400,
+                    fontSize: 14,
+                    lineHeight: 1.5,
+                    color: "var(--color-fg-subtle)",
+                  }}
+                />
+              </div>
+            </div>
+
             {/* Email */}
             <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
               <label
@@ -83,7 +123,6 @@ export default function LoginPage() {
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: "var(--space-8)",
                   background: "#171717",
                   border: "1px solid #404040",
                   borderRadius: "var(--radius-2xl)",
@@ -135,9 +174,9 @@ export default function LoginPage() {
                   id="password"
                   name="password"
                   type={showPassword ? "text" : "password"}
-                  placeholder="Sua Senha"
+                  placeholder="Mínimo 6 caracteres"
                   required
-                  autoComplete="current-password"
+                  autoComplete="new-password"
                   style={{
                     flex: 1,
                     border: "none",
@@ -160,7 +199,6 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Error message */}
             {state?.error && (
               <p
                 style={{
@@ -178,7 +216,6 @@ export default function LoginPage() {
             )}
           </div>
 
-          {/* Buttons */}
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--space-4)" }}>
             <button
               type="submit"
@@ -198,7 +235,7 @@ export default function LoginPage() {
                 transition: "background 0.2s",
               }}
             >
-              {isPending ? "Entrando..." : "Entrar"}
+              {isPending ? "Criando conta..." : "Criar conta"}
             </button>
 
             <span
@@ -214,7 +251,7 @@ export default function LoginPage() {
             </span>
 
             <a
-              href="/register"
+              href="/login"
               style={{
                 width: "100%",
                 height: 48,
@@ -233,7 +270,7 @@ export default function LoginPage() {
                 textDecoration: "none",
               }}
             >
-              Criar uma conta
+              Já tenho conta
             </a>
           </div>
         </form>

@@ -71,10 +71,10 @@ export function DonutChart({
           {centerLabel && (
             <span
               style={{
-                fontWeight: 600,
-                fontSize: 16,
-                color: "var(--color-bg-brand-dark)",
-                lineHeight: 1.5,
+                fontWeight: 700,
+                fontSize: 18,
+                color: "#0A0A0A",
+                lineHeight: 1.3,
               }}
             >
               {centerLabel}
@@ -84,9 +84,9 @@ export function DonutChart({
             <span
               style={{
                 fontWeight: 400,
-                fontSize: 10,
-                letterSpacing: "0.4px",
-                color: "var(--color-fg-subtle)",
+                fontSize: 11,
+                letterSpacing: "0.02em",
+                color: "#A3A3A3",
                 lineHeight: 1.5,
               }}
             >

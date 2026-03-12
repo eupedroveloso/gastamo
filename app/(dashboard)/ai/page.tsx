@@ -1,5 +1,6 @@
-import { MicrochipAiIcon } from "@/components/icons";
 import { AI_ENABLED } from "@/lib/config";
+import { AIChat } from "@/components/ai-chat";
+import { MicrochipAiIcon } from "@/components/icons";
 
 export default function AIPage() {
   if (!AI_ENABLED) {
@@ -10,22 +11,30 @@ export default function AIPage() {
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          height: "100%",
+          flex: 1,
           gap: 12,
         }}
       >
         <MicrochipAiIcon size={40} color="var(--color-fg-subtle)" />
-        <p
-          style={{
-            fontSize: 14,
-            color: "var(--color-fg-muted)",
-          }}
-        >
+        <p style={{ fontSize: 14, color: "var(--color-fg-muted)" }}>
           Assistente de IA — em breve
         </p>
       </div>
     );
   }
 
-  return null;
+  return (
+    <div
+      style={{
+        display: "flex",
+        flex: 1,
+        minHeight: 0,
+        margin: "-24px",
+        padding: "24px",
+        overflow: "hidden",
+      }}
+    >
+      <AIChat />
+    </div>
+  );
 }

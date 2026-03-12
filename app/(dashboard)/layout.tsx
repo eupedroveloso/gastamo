@@ -10,9 +10,10 @@ export default function DashboardLayout({
       style={{
         display: "flex",
         width: "100%",
-        minHeight: "100vh",
+        height: "100vh",
         margin: 0,
         background: "var(--color-bg-inverse)",
+        overflow: "hidden",
       }}
     >
       <Sidebar />
@@ -21,6 +22,10 @@ export default function DashboardLayout({
         style={{
           flex: 1,
           padding: "var(--space-16) var(--space-24) var(--space-16) 0",
+          minWidth: 0,
+          display: "flex",
+          flexDirection: "column",
+          overflow: "auto",
         }}
       >
         <div
@@ -28,9 +33,10 @@ export default function DashboardLayout({
             background: "var(--color-bg-subtle)",
             borderRadius: "var(--radius-4xl)",
             padding: "var(--space-24)",
-            minHeight: "calc(100vh - 32px)",
+            flex: 1,
             display: "flex",
             flexDirection: "column",
+            minHeight: "calc(100vh - 32px)",
           }}
         >
           {children}

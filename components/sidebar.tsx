@@ -69,7 +69,7 @@ export function Sidebar() {
     <aside
       style={{
         width: 80,
-        height: "100vh",
+        minHeight: "100vh",
         background: "var(--color-bg-inverse)",
         display: "flex",
         flexDirection: "column",
@@ -110,35 +110,7 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div
-        style={{
-          width: 56,
-          height: 56,
-          borderRadius: "var(--radius-2xl)",
-          background: "#1a1a1a",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: "50%",
-            background: "var(--color-bg-brand-default)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "var(--color-fg-inverse)",
-            fontWeight: 600,
-            fontSize: 14,
-          }}
-        >
-          U
-        </div>
-      </div>
+      <div />
     </aside>
   );
 }

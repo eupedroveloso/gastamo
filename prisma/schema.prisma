@@ -1,0 +1,102 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  avatar    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships FamilyMember[]
+  expenses    Expense[]
+  sessions    Session[]
+}
+
+model Family {
+  id        String   @id @default(cuid())
+  name      String
+  budget    Float    @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members    FamilyMember[]
+  expenses   Expense[]
+  categories Category[]
+  cards      Card[]
+}
+
+model FamilyMember {
+  id       String  @id @default(cuid())
+  role     String  @default("member")
+  budget   Float   @default(0)
+
+  userId   String
+  familyId String
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, familyId])
+}
+
+model Category {
+  id          String   @id @default(cuid())
+  name        String
+  limitAmount Float    @default(0)
+  createdAt   DateTime @default(now())
+
+  familyId String
+  family   Family    @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  expenses Expense[]
+}
+
+model Card {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  familyId String
+  family   Family    @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  expenses Expense[]
+}
+
+model Expense {
+  id                 String   @id @default(cuid())
+  name               String
+  invoiceId          String?
+  amount             Float
+  date               DateTime
+  type               String   @default("avulsa")
+  totalInstallments  Int?
+  currentInstallment Int?
+  pending            Boolean  @default(false)
+  createdAt          DateTime @default(now())
+
+  familyId      String
+  categoryId    String?
+  responsibleId String
+  cardId        String?
+
+  family      Family    @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  category    Category? @relation(fields: [categoryId], references: [id])
+  responsible User      @relation(fields: [responsibleId], references: [id])
+  card        Card?     @relation(fields: [cardId], references: [id])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
