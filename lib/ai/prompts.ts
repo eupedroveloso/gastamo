@@ -20,13 +20,13 @@ Total gasto em ${ctx.currentMonth}: ${formatBRL(ctx.totalSpentThisMonth)}`;
 
   const memberInfo =
     ctx.members.length > 0
-      ? `Gastos por membro:\n${ctx.members.map((m) => `- ${m.name}: ${formatBRL(m.spent)} (${m.percentOfTotal}%)`).join("\n")}`
+      ? `Gastos por membro:\n${ctx.members.map((m: { name: string; spent: number; percentOfTotal: number }) => `- ${m.name}: ${formatBRL(m.spent)} (${m.percentOfTotal}%)`).join("\n")}`
       : "Apenas 1 membro na família.";
 
   const categoryInfo =
     ctx.categories.length > 0
       ? `Categorias:\n${ctx.categories
-          .map((c) => {
+          .map((c: { name: string; spent: number; limit: number; usagePercent: number }) => {
             const limitStr = c.limit > 0 ? ` | Limite: ${formatBRL(c.limit)} (${c.usagePercent}% usado)` : "";
             return `- ${c.name}: ${formatBRL(c.spent)}${limitStr}`;
           })
@@ -37,7 +37,7 @@ Total gasto em ${ctx.currentMonth}: ${formatBRL(ctx.totalSpentThisMonth)}`;
     ctx.topExpenses.length > 0
       ? `Maiores gastos deste mês:\n${ctx.topExpenses
           .map(
-            (e) =>
+            (e: { name: string; amount: number; type: string; category: string; responsible: string; date: string }) =>
               `- ${e.name} (${e.type}): ${formatBRL(e.amount)} | ${e.category} | ${e.responsible} | ${e.date}`
           )
           .join("\n")}`

@@ -146,7 +146,7 @@ export async function bulkCreateExpenses(
   if (!member) return { error: "Família não encontrada" };
 
   await db.expense.createMany({
-    data: expenses.map((e) => ({
+    data: expenses.map((e: { name: string; amount: number; date: string; type: string; categoryId?: string; responsibleId: string; cardId?: string }) => ({
       name: e.name,
       amount: e.amount,
       date: new Date(e.date),
@@ -208,6 +208,6 @@ export async function getTransactionsData() {
     expenses,
     categories,
     cards,
-    members: members.map((m) => ({ userId: m.userId, name: m.user.name })),
+    members: members.map((m: { userId: string; user: { id: string; name: string } }) => ({ userId: m.userId, name: m.user.name })),
   };
 }

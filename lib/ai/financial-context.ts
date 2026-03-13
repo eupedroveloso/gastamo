@@ -99,18 +99,25 @@ export async function buildFinancialContext(): Promise<FinancialContext | null> 
     }),
   ]);
 
-  const totalSpent = monthExpenses.reduce((acc, e) => acc + e.amount, 0);
+  type Expense = {
+    amount: number; type: string; responsibleId: string; name: string; date: Date;
+    category: { name: string } | null; card: { name: string } | null; responsible: { name: string };
+  };
+  type CatWithExpenses = { name: string; limitAmount: number; expenses: { amount: number }[] };
+  type FamilyMember = { userId: string; user: { name: string } };
+
+  const totalSpent = (monthExpenses as Expense[]).reduce((acc: number, e: Expense) => acc + e.amount, 0);
   const budget = family.budget;
   const remaining = budget - totalSpent;
 
   const typeBreakdown = {
-    avulsa: monthExpenses.filter((e) => e.type === "avulsa").reduce((acc, e) => acc + e.amount, 0),
-    fixa: monthExpenses.filter((e) => e.type === "fixa").reduce((acc, e) => acc + e.amount, 0),
-    parcelada: monthExpenses.filter((e) => e.type === "parcelada").reduce((acc, e) => acc + e.amount, 0),
+    avulsa: (monthExpenses as Expense[]).filter((e: Expense) => e.type === "avulsa").reduce((acc: number, e: Expense) => acc + e.amount, 0),
+    fixa: (monthExpenses as Expense[]).filter((e: Expense) => e.type === "fixa").reduce((acc: number, e: Expense) => acc + e.amount, 0),
+    parcelada: (monthExpenses as Expense[]).filter((e: Expense) => e.type === "parcelada").reduce((acc: number, e: Expense) => acc + e.amount, 0),
   };
 
-  const categories = allCategories.map((cat) => {
-    const spent = cat.expenses.reduce((acc, e) => acc + e.amount, 0);
+  const categories = (allCategories as CatWithExpenses[]).map((cat: CatWithExpenses) => {
+    const spent = cat.expenses.reduce((acc: number, e: { amount: number }) => acc + e.amount, 0);
     return {
       name: cat.name,
       spent,
@@ -119,7 +126,7 @@ export async function buildFinancialContext(): Promise<FinancialContext | null> 
     };
   });
 
-  const topExpenses = monthExpenses.slice(0, 10).map((e) => ({
+  const topExpenses = (monthExpenses as Expense[]).slice(0, 10).map((e: Expense) => ({
     name: e.name,
     amount: e.amount,
     type: e.type,
@@ -129,7 +136,7 @@ export async function buildFinancialContext(): Promise<FinancialContext | null> 
     date: new Date(e.date).toLocaleDateString("pt-BR"),
   }));
 
-  const allExpensesThisMonth = monthExpenses.map((e) => ({
+  const allExpensesThisMonth = (monthExpenses as Expense[]).map((e: Expense) => ({
     name: e.name,
     amount: e.amount,
     type: e.type,
@@ -139,10 +146,10 @@ export async function buildFinancialContext(): Promise<FinancialContext | null> 
     date: new Date(e.date).toLocaleDateString("pt-BR"),
   }));
 
-  const members = family.members.map((m) => {
-    const spent = monthExpenses
-      .filter((e) => e.responsibleId === m.userId)
-      .reduce((acc, e) => acc + e.amount, 0);
+  const members = (family.members as FamilyMember[]).map((m: FamilyMember) => {
+    const spent = (monthExpenses as Expense[])
+      .filter((e: Expense) => e.responsibleId === m.userId)
+      .reduce((acc: number, e: Expense) => acc + e.amount, 0);
     return {
       name: m.user.name,
       spent,
@@ -169,8 +176,8 @@ export async function buildFinancialContext(): Promise<FinancialContext | null> 
     topExpenses,
     allExpensesThisMonth,
     members,
-    cards: family.cards.map((c) => c.name),
-    categoriesAvailable: family.categories.map((c) => c.name),
+    cards: (family.cards as { name: string }[]).map((c: { name: string }) => c.name),
+    categoriesAvailable: (family.categories as { name: string }[]).map((c: { name: string }) => c.name),
   };
 }
 
