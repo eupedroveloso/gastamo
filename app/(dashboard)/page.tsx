@@ -369,7 +369,7 @@ export default async function DashboardPage() {
                 <span style={{ fontWeight: 400, fontSize: 16, color: "#0A0A0A", lineHeight: 1.5 }}>
                   Divisão do Orçamento
                 </span>
-                <AvatarStack members={memberSpending.map((m) => ({ name: m.name, avatar: m.avatar }))} />
+                <AvatarStack members={memberSpending.map((m: { name: string; avatar: string | null }) => ({ name: m.name, avatar: m.avatar }))} />
               </div>
 
               <DonutChart
@@ -452,7 +452,7 @@ export default async function DashboardPage() {
                   Nenhuma categoria cadastrada
                 </p>
               ) : (
-                categories.map((cat) => (
+                categories.map((cat: { id: string; name: string; limitAmount: number; spent: number; percentage: number }) => (
                   <div key={cat.id} style={{ display: "flex", flexDirection: "column", gap: "var(--space-8)", padding: "0 8px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <span style={{ fontWeight: 300, fontSize: 12, letterSpacing: "0.2px", color: "var(--color-fg-default)", lineHeight: 1.5 }}>
