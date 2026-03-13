@@ -1,6 +1,7 @@
 import { getDashboardData } from "@/lib/actions/dashboard";
 import { DonutChart } from "@/components/donut-chart";
 import { ExpenseButtonPanel } from "@/components/expense-button-panel";
+import { FamilySwitcher } from "@/components/family-switcher";
 
 function formatBRL(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -56,7 +57,7 @@ export default async function DashboardPage() {
 
   if (!data) return null;
 
-  const { user, family, expenses, totalSpent, daysInMonth, categories, cards, memberSpending } = data;
+  const { user, family, families, activeFamilyId, expenses, totalSpent, daysInMonth, categories, cards, memberSpending } = data;
   const typeStats = data.typeStats ?? { avulsa: 0, fixa: 0, parcelada: 0 };
 
   const totalBudget = family?.budget ?? 0;
@@ -89,17 +90,23 @@ export default async function DashboardPage() {
           height: 70,
         }}
       >
-        <h1
-          style={{
-            fontWeight: 400,
-            fontSize: 32,
-            lineHeight: 1.2,
-            letterSpacing: "-0.6px",
-            color: "#000000",
-          }}
-        >
-          Olá {user.name.split(" ")[0]}
-        </h1>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <h1
+            style={{
+              fontWeight: 400,
+              fontSize: 32,
+              lineHeight: 1.2,
+              letterSpacing: "-0.6px",
+              color: "#000000",
+            }}
+          >
+            Olá {user.name.split(" ")[0]}
+          </h1>
+          <FamilySwitcher
+            families={families ?? []}
+            activeFamilyId={activeFamilyId ?? null}
+          />
+        </div>
 
         <ExpenseButtonPanel
           categories={categories.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name }))}

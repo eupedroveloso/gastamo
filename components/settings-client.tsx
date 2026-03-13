@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useActionState, useRef, useEffect } from "react";
+import { useState, useActionState, useRef, useEffect, useTransition } from "react";
 import {
   updateProfile,
   updateFamilyName,
   updateFamilyBudget,
   updateMemberBudget,
   inviteMember,
+  deleteMember,
+  cancelInvite,
   createCategory,
   deleteCategory,
   updateCategoryLimit,
@@ -62,6 +64,14 @@ interface Card {
   name: string;
 }
 
+interface PendingInvite {
+  id: string;
+  budget: number;
+  createdAt: Date;
+  invitedUser: { id: string; name: string; email: string; avatar?: string | null };
+  invitedBy: { id: string; name: string };
+}
+
 interface Family {
   id: string;
   name: string;
@@ -69,11 +79,13 @@ interface Family {
   members: FamilyMember[];
   categories: Category[];
   cards: Card[];
+  invites?: PendingInvite[];
 }
 
 interface SettingsClientProps {
   user: User;
   family: Family | null;
+  currentUserRole?: string;
 }
 
 const inputStyle: React.CSSProperties = {
@@ -245,8 +257,12 @@ function DeleteAccountButton() {
   );
 }
 
-export function SettingsClient({ user, family }: SettingsClientProps) {
+export function SettingsClient({ user, family, currentUserRole = "member" }: SettingsClientProps) {
   const [activeTab, setActiveTab] = useState<Tab>("profile");
+  const [deletingMemberId, setDeletingMemberId] = useState<string | null>(null);
+  const [cancelingInviteId, setCancelingInviteId] = useState<string | null>(null);
+  const [memberActionError, setMemberActionError] = useState<string | null>(null);
+  const [, startMemberTransition] = useTransition();
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [editingFamilyName, setEditingFamilyName] = useState(false);
@@ -919,11 +935,139 @@ export function SettingsClient({ user, family }: SettingsClientProps) {
                                 {isAdmin ? "Admin" : "Membro"}
                               </span>
                             </div>
+                            {(currentUserRole === "owner" || currentUserRole === "admin") && member.userId !== user.id && member.role !== "owner" && (
+                              <button
+                                type="button"
+                                disabled={deletingMemberId === member.id}
+                                onClick={() => {
+                                  setDeletingMemberId(member.id);
+                                  startMemberTransition(async () => {
+                                    const result = await deleteMember(member.id);
+                                    if (result?.error) setMemberActionError(result.error);
+                                    setDeletingMemberId(null);
+                                  });
+                                }}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  width: 28,
+                                  height: 28,
+                                  borderRadius: 6,
+                                  border: "1px solid #FECACA",
+                                  background: "#FEF2F2",
+                                  cursor: deletingMemberId === member.id ? "not-allowed" : "pointer",
+                                  opacity: deletingMemberId === member.id ? 0.6 : 1,
+                                  flexShrink: 0,
+                                }}
+                              >
+                                <TrashCanIcon size={14} color="#DC2626" />
+                              </button>
+                            )}
                           </div>
                         </div>
                       );
                     })}
                   </div>
+
+                  {memberActionError && (
+                    <p style={{ color: "#DC2626", fontSize: 13, margin: 0 }}>{memberActionError}</p>
+                  )}
+
+                  {/* Pending invites */}
+                  {family.invites && family.invites.length > 0 && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <p style={sectionTitleStyle}>Convites Pendentes</p>
+                      {family.invites.map((invite) => {
+                        const inviteInitials = invite.invitedUser.name
+                          .split(" ")
+                          .map((n: string) => n[0])
+                          .join("")
+                          .toUpperCase()
+                          .slice(0, 2);
+                        return (
+                          <div
+                            key={invite.id}
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              padding: "12px 16px",
+                              border: "1px solid #FEF3C7",
+                              borderRadius: 12,
+                              background: "#FFFBEB",
+                              minHeight: 60,
+                              boxSizing: "border-box",
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                              <div
+                                style={{
+                                  width: 36,
+                                  height: 36,
+                                  borderRadius: "50%",
+                                  background: "#FEF3C7",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  color: "#B45309",
+                                  flexShrink: 0,
+                                  overflow: "hidden",
+                                }}
+                              >
+                                {invite.invitedUser.avatar ? (
+                                  <img
+                                    src={invite.invitedUser.avatar}
+                                    alt={invite.invitedUser.name}
+                                    style={{ width: 36, height: 36, objectFit: "cover" }}
+                                  />
+                                ) : (
+                                  inviteInitials
+                                )}
+                              </div>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                                <span style={{ fontSize: 13, fontWeight: 600, color: "#0A0A0A" }}>
+                                  {invite.invitedUser.name}
+                                </span>
+                                <span style={{ fontSize: 12, color: "#525252", letterSpacing: "0.02em" }}>
+                                  {invite.invitedUser.email} · Convite pendente
+                                </span>
+                              </div>
+                            </div>
+                            {(currentUserRole === "owner" || currentUserRole === "admin") && (
+                              <button
+                                type="button"
+                                disabled={cancelingInviteId === invite.id}
+                                onClick={() => {
+                                  setCancelingInviteId(invite.id);
+                                  startMemberTransition(async () => {
+                                    await cancelInvite(invite.id);
+                                    setCancelingInviteId(null);
+                                  });
+                                }}
+                                style={{
+                                  padding: "4px 12px",
+                                  borderRadius: 8,
+                                  border: "1px solid #FECACA",
+                                  background: "#FEF2F2",
+                                  cursor: cancelingInviteId === invite.id ? "not-allowed" : "pointer",
+                                  fontSize: 12,
+                                  fontWeight: 600,
+                                  color: "#DC2626",
+                                  fontFamily: "inherit",
+                                  opacity: cancelingInviteId === invite.id ? 0.6 : 1,
+                                }}
+                              >
+                                {cancelingInviteId === invite.id ? "Cancelando..." : "Cancelar convite"}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
 
                   <div style={dividerStyle} />
 

@@ -2,6 +2,8 @@
 
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { getActiveFamilyId } from "@/lib/active-family";
+import { getUserFamilies } from "@/lib/actions/family";
 
 export async function getDashboardData() {
   const session = await getSession();
@@ -10,30 +12,37 @@ export async function getDashboardData() {
   const userId = session.userId;
   const user = session.user;
 
-  const familyMember = await db.familyMember.findFirst({
-    where: { userId },
-    select: {
-      familyId: true,
-      family: {
+  const [activeFamilyId, families] = await Promise.all([
+    getActiveFamilyId(),
+    getUserFamilies(),
+  ]);
+
+  const familyMember = activeFamilyId
+    ? await db.familyMember.findFirst({
+        where: { userId, familyId: activeFamilyId },
         select: {
-          id: true,
-          name: true,
-          budget: true,
-          members: {
+          familyId: true,
+          family: {
             select: {
-              userId: true,
-              role: true,
+              id: true,
+              name: true,
               budget: true,
-              user: { select: { name: true, avatar: true } },
+              members: {
+                select: {
+                  userId: true,
+                  role: true,
+                  budget: true,
+                  user: { select: { name: true, avatar: true } },
+                },
+              },
             },
           },
         },
-      },
-    },
-  });
+      })
+    : null;
 
   if (!familyMember) {
-    return { user, family: null, expenses: [], totalSpent: 0, categories: [], cards: [], memberSpending: [], typeStats: { avulsa: 0, fixa: 0, parcelada: 0 } };
+    return { user, family: null, families, activeFamilyId: null, expenses: [], totalSpent: 0, categories: [], cards: [], memberSpending: [], typeStats: { avulsa: 0, fixa: 0, parcelada: 0 } };
   }
 
   const family = familyMember.family;
@@ -123,6 +132,8 @@ export async function getDashboardData() {
   return {
     user,
     family,
+    families,
+    activeFamilyId: familyId,
     expenses,
     totalSpent,
     daysInMonth,

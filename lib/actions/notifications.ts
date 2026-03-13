@@ -2,15 +2,21 @@
 
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { getActiveFamilyId } from "@/lib/active-family";
+import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
+import { ACTIVE_FAMILY_COOKIE } from "@/lib/active-family";
 
 export interface Notification {
   id: string;
-  type: "expense" | "category_alert";
+  type: "expense" | "category_alert" | "invite";
   title: string;
   description: string;
   createdAt: Date;
   memberName?: string;
   memberAvatar?: string | null;
+  inviteId?: string;
+  familyName?: string;
 }
 
 export async function getNotifications(): Promise<Notification[]> {
@@ -18,19 +24,45 @@ export async function getNotifications(): Promise<Notification[]> {
   if (!session) return [];
 
   try {
-    const member = await db.familyMember.findFirst({
-      where: { userId: session.userId },
-      select: { familyId: true },
+    const notifications: Notification[] = [];
+
+    // Pending invites for this user (always show, regardless of active family)
+    const pendingInvites = await db.familyInvite.findMany({
+      where: { invitedUserId: session.userId, status: "pending" },
+      include: {
+        family: { select: { name: true } },
+        invitedBy: { select: { name: true, avatar: true } },
+      },
+      orderBy: { createdAt: "desc" },
     });
-    if (!member) return [];
+
+    for (const invite of pendingInvites) {
+      notifications.push({
+        id: `invite-${invite.id}`,
+        type: "invite",
+        title: `${invite.invitedBy.name} te convidou`,
+        description: `Convite para entrar na família "${invite.family.name}"`,
+        createdAt: invite.createdAt,
+        memberName: invite.invitedBy.name,
+        memberAvatar: invite.invitedBy.avatar,
+        inviteId: invite.id,
+        familyName: invite.family.name,
+      });
+    }
+
+    // Expense and category notifications from active family
+    const familyId = await getActiveFamilyId();
+    if (!familyId) {
+      notifications.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      return notifications;
+    }
 
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-    // Recent expenses by other family members
     const recentExpenses = await db.expense.findMany({
       where: {
-        familyId: member.familyId,
+        familyId,
         responsibleId: { not: session.userId },
         createdAt: { gte: sevenDaysAgo },
       },
@@ -42,9 +74,8 @@ export async function getNotifications(): Promise<Notification[]> {
       take: 20,
     });
 
-    // Categories over limit
     const categories = await db.category.findMany({
-      where: { familyId: member.familyId, limitAmount: { gt: 0 } },
+      where: { familyId, limitAmount: { gt: 0 } },
       include: {
         expenses: {
           where: {
@@ -54,8 +85,6 @@ export async function getNotifications(): Promise<Notification[]> {
         },
       },
     });
-
-    const notifications: Notification[] = [];
 
     for (const expense of recentExpenses) {
       const amount = expense.amount.toLocaleString("pt-BR", {
@@ -89,11 +118,79 @@ export async function getNotifications(): Promise<Notification[]> {
       }
     }
 
-    // Sort by date desc
     notifications.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-
     return notifications;
   } catch {
     return [];
+  }
+}
+
+export async function acceptInvite(inviteId: string): Promise<{ error?: string; success?: string }> {
+  const session = await getSession();
+  if (!session) return { error: "Não autorizado" };
+
+  try {
+    const invite = await db.familyInvite.findFirst({
+      where: { id: inviteId, invitedUserId: session.userId, status: "pending" },
+    });
+    if (!invite) return { error: "Convite não encontrado ou já processado" };
+
+    const existingMember = await db.familyMember.findFirst({
+      where: { userId: session.userId, familyId: invite.familyId },
+    });
+    if (!existingMember) {
+      await db.familyMember.create({
+        data: {
+          userId: session.userId,
+          familyId: invite.familyId,
+          role: "member",
+          budget: invite.budget,
+        },
+      });
+    }
+
+    await db.familyInvite.update({
+      where: { id: inviteId },
+      data: { status: "accepted" },
+    });
+
+    // Set the new family as active
+    const cookieStore = await cookies();
+    cookieStore.set(ACTIVE_FAMILY_COOKIE, invite.familyId, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365,
+    });
+
+    revalidatePath("/");
+    revalidatePath("/settings");
+    revalidatePath("/transactions");
+    return { success: "Você entrou na família!" };
+  } catch {
+    return { error: "Erro ao aceitar convite" };
+  }
+}
+
+export async function declineInvite(inviteId: string): Promise<{ error?: string; success?: string }> {
+  const session = await getSession();
+  if (!session) return { error: "Não autorizado" };
+
+  try {
+    const invite = await db.familyInvite.findFirst({
+      where: { id: inviteId, invitedUserId: session.userId, status: "pending" },
+    });
+    if (!invite) return { error: "Convite não encontrado" };
+
+    await db.familyInvite.update({
+      where: { id: inviteId },
+      data: { status: "declined" },
+    });
+
+    revalidatePath("/");
+    return { success: "Convite recusado" };
+  } catch {
+    return { error: "Erro ao recusar convite" };
   }
 }

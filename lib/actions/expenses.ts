@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
+import { getActiveFamilyId } from "@/lib/active-family";
 
 export type ExpenseState = { error?: string; success?: boolean } | null;
 
@@ -34,10 +35,8 @@ export async function createExpense(
   const totalInstallments = type === "parcelada" && totalInstallmentsStr ? parseInt(totalInstallmentsStr) : null;
   const currentInstallment = type === "parcelada" && currentInstallmentStr ? parseInt(currentInstallmentStr) : null;
 
-  const familyMember = await db.familyMember.findFirst({
-    where: { userId: session.userId },
-  });
-  if (!familyMember) return { error: "Família não encontrada" };
+  const familyId = await getActiveFamilyId();
+  if (!familyId) return { error: "Família não encontrada" };
 
   await db.expense.create({
     data: {
@@ -48,7 +47,7 @@ export async function createExpense(
       type,
       totalInstallments,
       currentInstallment,
-      familyId: familyMember.familyId,
+      familyId,
       categoryId: categoryId || null,
       responsibleId,
       cardId: cardId || null,
@@ -131,14 +130,11 @@ export async function bulkDeleteExpenses(ids: string[]): Promise<{ success?: boo
   if (!ids.length) return { error: "Nenhum gasto selecionado" };
 
   try {
-    const member = await db.familyMember.findFirst({
-      where: { userId: session.userId },
-      select: { familyId: true },
-    });
-    if (!member) return { error: "Família não encontrada" };
+    const familyId = await getActiveFamilyId();
+    if (!familyId) return { error: "Família não encontrada" };
 
     await db.expense.deleteMany({
-      where: { id: { in: ids }, familyId: member.familyId },
+      where: { id: { in: ids }, familyId },
     });
 
     revalidatePath("/transactions");
@@ -165,10 +161,8 @@ export async function bulkCreateExpenses(
 
   if (!expenses.length) return { error: "Nenhum gasto para importar" };
 
-  const member = await db.familyMember.findFirst({
-    where: { userId: session.userId },
-  });
-  if (!member) return { error: "Família não encontrada" };
+  const familyId = await getActiveFamilyId();
+  if (!familyId) return { error: "Família não encontrada" };
 
   await db.expense.createMany({
     data: expenses.map((e: { name: string; amount: number; date: string; type: string; categoryId?: string; responsibleId: string; cardId?: string }) => ({
@@ -177,7 +171,7 @@ export async function bulkCreateExpenses(
       date: new Date(e.date),
       type: e.type,
       pending: true,
-      familyId: member.familyId,
+      familyId,
       categoryId: e.categoryId || null,
       responsibleId: e.responsibleId,
       cardId: e.cardId || null,
@@ -193,13 +187,8 @@ export async function getTransactionsData() {
   const session = await getSession();
   if (!session) return null;
 
-  const member = await db.familyMember.findFirst({
-    where: { userId: session.userId },
-    select: { familyId: true },
-  });
-  if (!member) return null;
-
-  const fid = member.familyId;
+  const fid = await getActiveFamilyId();
+  if (!fid) return null;
 
   const [expenses, categories, cards, members] = await Promise.all([
     db.expense.findMany({

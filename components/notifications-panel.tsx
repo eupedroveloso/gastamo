@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { CloseIcon, BellIcon, TrashCanIcon } from "./icons";
-import { getNotifications, type Notification } from "@/lib/actions/notifications";
+import { getNotifications, acceptInvite, declineInvite, type Notification } from "@/lib/actions/notifications";
 
 const DISMISSED_KEY = "gastamo_dismissed_notifications";
 
@@ -86,6 +86,18 @@ export function NotificationsPanel({ open, onClose }: Props) {
   const [allNotifications, setAllNotifications] = useState<Notification[]>([]);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [isPending, startTransition] = useTransition();
+  const [processingInviteId, setProcessingInviteId] = useState<string | null>(null);
+
+  const handleInviteAction = async (inviteId: string, action: "accept" | "decline") => {
+    setProcessingInviteId(inviteId);
+    if (action === "accept") {
+      await acceptInvite(inviteId);
+    } else {
+      await declineInvite(inviteId);
+    }
+    setAllNotifications((prev) => prev.filter((n) => n.inviteId !== inviteId));
+    setProcessingInviteId(null);
+  };
 
   useEffect(() => {
     if (open) {
@@ -97,7 +109,7 @@ export function NotificationsPanel({ open, onClose }: Props) {
     }
   }, [open]);
 
-  const visible = allNotifications.filter((n) => !dismissed.has(n.id));
+  const visible = allNotifications.filter((n) => n.type === "invite" || !dismissed.has(n.id));
 
   const dismiss = (id: string) => {
     const next = new Set(dismissed);
@@ -107,7 +119,7 @@ export function NotificationsPanel({ open, onClose }: Props) {
   };
 
   const dismissAll = () => {
-    const next = new Set(allNotifications.map((n) => n.id));
+    const next = new Set(allNotifications.filter((n) => n.type !== "invite").map((n) => n.id));
     setDismissed(next);
     saveDismissed(next);
   };
@@ -214,48 +226,124 @@ export function NotificationsPanel({ open, onClose }: Props) {
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
-              {visible.map((n) => (
-                <div
-                  key={n.id}
-                  style={{
-                    display: "flex", alignItems: "flex-start", gap: "var(--space-12)",
-                    padding: "var(--space-12)",
-                    borderRadius: "var(--radius-xl)",
-                    background: "var(--color-bg-subtle)",
-                  }}
-                >
-                  {n.type === "expense" ? (
-                    <Avatar name={n.memberName} avatar={n.memberAvatar} />
-                  ) : (
-                    <AlertDot type={n.type} />
-                  )}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-fg-default)", lineHeight: 1.4, marginBottom: 2 }}>
-                      {n.title}
+              {visible.map((n) => {
+                if (n.type === "invite") {
+                  const isProcessing = processingInviteId === n.inviteId;
+                  return (
+                    <div
+                      key={n.id}
+                      style={{
+                        display: "flex", flexDirection: "column", gap: "var(--space-12)",
+                        padding: "var(--space-12)",
+                        borderRadius: "var(--radius-xl)",
+                        background: "#FFFBEB",
+                        border: "1px solid #FEF3C7",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: "var(--space-12)" }}>
+                        <div
+                          style={{
+                            width: 32, height: 32, borderRadius: "50%",
+                            background: "#FEF3C720",
+                            border: "1px solid #FEF3C7",
+                            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                          }}
+                        >
+                          <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#F59E0B" }} />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: "#92400E", lineHeight: 1.4, marginBottom: 2 }}>
+                            {n.title}
+                          </div>
+                          <div style={{ fontSize: 12, color: "#B45309", lineHeight: 1.4 }}>
+                            {n.description}
+                          </div>
+                          <div style={{ fontSize: 11, color: "#D97706", marginTop: 4 }}>
+                            {timeAgo(n.createdAt)}
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button
+                          type="button"
+                          disabled={isProcessing}
+                          onClick={() => handleInviteAction(n.inviteId!, "accept")}
+                          style={{
+                            flex: 1, height: 32, borderRadius: 8,
+                            background: isProcessing ? "#E5E5E5" : "#0F8F4E",
+                            border: "none",
+                            cursor: isProcessing ? "not-allowed" : "pointer",
+                            fontSize: 12, fontWeight: 600,
+                            color: isProcessing ? "#A3A3A3" : "#FFFFFF",
+                            fontFamily: "inherit",
+                          }}
+                        >
+                          {isProcessing ? "..." : "Aceitar"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isProcessing}
+                          onClick={() => handleInviteAction(n.inviteId!, "decline")}
+                          style={{
+                            flex: 1, height: 32, borderRadius: 8,
+                            background: "#FEF2F2",
+                            border: "1px solid #FECACA",
+                            cursor: isProcessing ? "not-allowed" : "pointer",
+                            fontSize: 12, fontWeight: 600,
+                            color: "#DC2626",
+                            fontFamily: "inherit",
+                          }}
+                        >
+                          Recusar
+                        </button>
+                      </div>
                     </div>
-                    <div style={{ fontSize: 12, color: "var(--color-fg-muted)", lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {n.description}
-                    </div>
-                    <div style={{ fontSize: 11, color: "var(--color-fg-subtle)", marginTop: 4 }}>
-                      {timeAgo(n.createdAt)}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => dismiss(n.id)}
-                    title="Remover"
+                  );
+                }
+
+                return (
+                  <div
+                    key={n.id}
                     style={{
-                      width: 24, height: 24, border: "none", background: "transparent",
-                      cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-                      flexShrink: 0, opacity: 0.4, borderRadius: "var(--radius-lg)",
+                      display: "flex", alignItems: "flex-start", gap: "var(--space-12)",
+                      padding: "var(--space-12)",
+                      borderRadius: "var(--radius-xl)",
+                      background: "var(--color-bg-subtle)",
                     }}
-                    onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
-                    onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.4")}
                   >
-                    <CloseIcon size={12} color="var(--color-fg-muted)" />
-                  </button>
-                </div>
-              ))}
+                    {n.type === "expense" ? (
+                      <Avatar name={n.memberName} avatar={n.memberAvatar} />
+                    ) : (
+                      <AlertDot type={n.type} />
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-fg-default)", lineHeight: 1.4, marginBottom: 2 }}>
+                        {n.title}
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--color-fg-muted)", lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {n.description}
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--color-fg-subtle)", marginTop: 4 }}>
+                        {timeAgo(n.createdAt)}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => dismiss(n.id)}
+                      title="Remover"
+                      style={{
+                        width: 24, height: 24, border: "none", background: "transparent",
+                        cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                        flexShrink: 0, opacity: 0.4, borderRadius: "var(--radius-lg)",
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
+                      onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.4")}
+                    >
+                      <CloseIcon size={12} color="var(--color-fg-muted)" />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

@@ -15,9 +15,11 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships FamilyMember[]
-  expenses    Expense[]
-  sessions    Session[]
+  memberships     FamilyMember[]
+  expenses        Expense[]
+  sessions        Session[]
+  invitesReceived FamilyInvite[] @relation("InvitesReceived")
+  invitesSent     FamilyInvite[] @relation("InvitesSent")
 }
 
 model Family {
@@ -31,6 +33,7 @@ model Family {
   expenses   Expense[]
   categories Category[]
   cards      Card[]
+  invites    FamilyInvite[]
 }
 
 model FamilyMember {
@@ -89,6 +92,23 @@ model Expense {
   category    Category? @relation(fields: [categoryId], references: [id])
   responsible User      @relation(fields: [responsibleId], references: [id])
   card        Card?     @relation(fields: [cardId], references: [id])
+}
+
+model FamilyInvite {
+  id        String   @id @default(cuid())
+  status    String   @default("pending") // pending, accepted, declined
+  budget    Float    @default(0)
+  createdAt DateTime @default(now())
+
+  invitedUserId String
+  familyId      String
+  invitedById   String
+
+  invitedUser User   @relation("InvitesReceived", fields: [invitedUserId], references: [id], onDelete: Cascade)
+  family      Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  invitedBy   User   @relation("InvitesSent", fields: [invitedById], references: [id], onDelete: Cascade)
+
+  @@unique([invitedUserId, familyId])
 }
 
 model Session {

@@ -2,11 +2,18 @@
 
 import { getSession, deleteSession } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { getActiveFamilyId } from "@/lib/active-family";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
 
 type ActionResult = { error?: string; success?: string } | null;
+
+async function getActiveMember(userId: string) {
+  const familyId = await getActiveFamilyId();
+  if (!familyId) return null;
+  return db.familyMember.findFirst({ where: { userId, familyId } });
+}
 
 export async function updateProfile(prevState: ActionResult, formData: FormData): Promise<ActionResult> {
   const session = await getSession();
@@ -63,7 +70,7 @@ export async function updateFamilyName(prevState: ActionResult, formData: FormDa
   if (!name) return { error: "Nome da família é obrigatório" };
 
   try {
-    const member = await db.familyMember.findFirst({ where: { userId: session.userId } });
+    const member = await getActiveMember(session.userId);
     if (!member) return { error: "Família não encontrada" };
 
     await db.family.update({ where: { id: member.familyId }, data: { name } });
@@ -84,7 +91,7 @@ export async function updateFamilyBudget(prevState: ActionResult, formData: Form
   if (budget < 0) return { error: "Orçamento inválido" };
 
   try {
-    const member = await db.familyMember.findFirst({ where: { userId: session.userId } });
+    const member = await getActiveMember(session.userId);
     if (!member) return { error: "Família não encontrada" };
 
     await db.family.update({ where: { id: member.familyId }, data: { budget } });
@@ -107,7 +114,7 @@ export async function updateMemberBudget(prevState: ActionResult, formData: Form
   if (budget < 0) return { error: "Orçamento inválido" };
 
   try {
-    const myMember = await db.familyMember.findFirst({ where: { userId: session.userId } });
+    const myMember = await getActiveMember(session.userId);
     if (!myMember) return { error: "Família não encontrada" };
 
     const target = await db.familyMember.findFirst({
@@ -143,26 +150,86 @@ export async function inviteMember(prevState: ActionResult, formData: FormData):
   if (budget < 0) return { error: "Orçamento do integrante inválido" };
 
   try {
-    const member = await db.familyMember.findFirst({ where: { userId: session.userId } });
+    const member = await getActiveMember(session.userId);
     if (!member) return { error: "Família não encontrada" };
 
     const userToInvite = await db.user.findUnique({ where: { email } });
     if (!userToInvite) return { error: "Usuário não encontrado na plataforma" };
 
-    const existing = await db.familyMember.findFirst({
+    const existingMember = await db.familyMember.findFirst({
       where: { userId: userToInvite.id, familyId: member.familyId },
     });
-    if (existing) return { error: "Usuário já é membro desta família" };
+    if (existingMember) return { error: "Usuário já é membro desta família" };
 
-    await db.familyMember.create({
-      data: { userId: userToInvite.id, familyId: member.familyId, role: "member", budget },
+    const existingInvite = await db.familyInvite.findFirst({
+      where: { invitedUserId: userToInvite.id, familyId: member.familyId, status: "pending" },
+    });
+    if (existingInvite) return { error: "Já existe um convite pendente para este usuário" };
+
+    await db.familyInvite.create({
+      data: {
+        invitedUserId: userToInvite.id,
+        familyId: member.familyId,
+        invitedById: session.userId,
+        budget,
+        status: "pending",
+      },
     });
 
     revalidatePath("/settings");
-    revalidatePath("/");
-    return { success: `${userToInvite.name} foi adicionado à família` };
+    return { success: `Convite enviado para ${userToInvite.name}` };
   } catch {
-    return { error: "Erro ao convidar integrante" };
+    return { error: "Erro ao enviar convite" };
+  }
+}
+
+export async function deleteMember(memberId: string): Promise<ActionResult> {
+  const session = await getSession();
+  if (!session) return { error: "Não autorizado" };
+
+  try {
+    const myMember = await getActiveMember(session.userId);
+    if (!myMember) return { error: "Família não encontrada" };
+
+    if (myMember.role !== "owner" && myMember.role !== "admin") {
+      return { error: "Apenas o administrador pode remover membros" };
+    }
+
+    const target = await db.familyMember.findFirst({
+      where: { id: memberId, familyId: myMember.familyId },
+    });
+    if (!target) return { error: "Integrante não encontrado" };
+    if (target.userId === session.userId) return { error: "Você não pode se remover da família" };
+
+    await db.familyMember.delete({ where: { id: memberId } });
+
+    revalidatePath("/settings");
+    revalidatePath("/");
+    return { success: "Integrante removido da família" };
+  } catch {
+    return { error: "Erro ao remover integrante" };
+  }
+}
+
+export async function cancelInvite(inviteId: string): Promise<ActionResult> {
+  const session = await getSession();
+  if (!session) return { error: "Não autorizado" };
+
+  try {
+    const myMember = await getActiveMember(session.userId);
+    if (!myMember) return { error: "Família não encontrada" };
+
+    const invite = await db.familyInvite.findFirst({
+      where: { id: inviteId, familyId: myMember.familyId },
+    });
+    if (!invite) return { error: "Convite não encontrado" };
+
+    await db.familyInvite.delete({ where: { id: inviteId } });
+
+    revalidatePath("/settings");
+    return { success: "Convite cancelado" };
+  } catch {
+    return { error: "Erro ao cancelar convite" };
   }
 }
 
@@ -174,7 +241,7 @@ export async function createCategory(prevState: ActionResult, formData: FormData
   if (!name) return { error: "Nome da categoria é obrigatório" };
 
   try {
-    const member = await db.familyMember.findFirst({ where: { userId: session.userId } });
+    const member = await getActiveMember(session.userId);
     if (!member) return { error: "Família não encontrada" };
 
     await db.category.create({ data: { name, familyId: member.familyId } });
@@ -198,7 +265,7 @@ export async function updateCategoryLimit(prevState: ActionResult, formData: For
   if (limit < 0) return { error: "Limite inválido" };
 
   try {
-    const member = await db.familyMember.findFirst({ where: { userId: session.userId } });
+    const member = await getActiveMember(session.userId);
     if (!member) return { error: "Família não encontrada" };
 
     const category = await db.category.findFirst({ where: { id: categoryId, familyId: member.familyId } });
@@ -234,7 +301,7 @@ export async function createCard(prevState: ActionResult, formData: FormData): P
   if (!name) return { error: "Nome do cartão é obrigatório" };
 
   try {
-    const member = await db.familyMember.findFirst({ where: { userId: session.userId } });
+    const member = await getActiveMember(session.userId);
     if (!member) return { error: "Família não encontrada" };
 
     await db.card.create({ data: { name, familyId: member.familyId } });
