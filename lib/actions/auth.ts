@@ -15,17 +15,22 @@ export async function login(prevState: AuthState, formData: FormData): Promise<A
     return { error: "Preencha todos os campos" };
   }
 
-  const user = await db.user.findUnique({ where: { email } });
-  if (!user) {
-    return { error: "Email ou senha incorretos" };
+  try {
+    const user = await db.user.findUnique({ where: { email } });
+    if (!user) {
+      return { error: "Email ou senha incorretos" };
+    }
+
+    const valid = await bcrypt.compare(password, user.password);
+    if (!valid) {
+      return { error: "Email ou senha incorretos" };
+    }
+
+    await createSession(user.id);
+  } catch {
+    return { error: "Erro ao conectar com o servidor. Tente novamente." };
   }
 
-  const valid = await bcrypt.compare(password, user.password);
-  if (!valid) {
-    return { error: "Email ou senha incorretos" };
-  }
-
-  await createSession(user.id);
   redirect("/");
 }
 
@@ -42,27 +47,32 @@ export async function register(prevState: AuthState, formData: FormData): Promis
     return { error: "A senha deve ter pelo menos 6 caracteres" };
   }
 
-  const existing = await db.user.findUnique({ where: { email } });
-  if (existing) {
-    return { error: "Email já cadastrado" };
+  try {
+    const existing = await db.user.findUnique({ where: { email } });
+    if (existing) {
+      return { error: "Email já cadastrado" };
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 12);
+
+    const user = await db.user.create({
+      data: { name, email, password: hashedPassword },
+    });
+
+    await db.family.create({
+      data: {
+        name: `Família de ${name}`,
+        members: {
+          create: { userId: user.id, role: "owner" },
+        },
+      },
+    });
+
+    await createSession(user.id);
+  } catch {
+    return { error: "Erro ao criar conta. Tente novamente." };
   }
 
-  const hashedPassword = await bcrypt.hash(password, 12);
-
-  const user = await db.user.create({
-    data: { name, email, password: hashedPassword },
-  });
-
-  await db.family.create({
-    data: {
-      name: `Família de ${name}`,
-      members: {
-        create: { userId: user.id, role: "owner" },
-      },
-    },
-  });
-
-  await createSession(user.id);
   redirect("/");
 }
 
