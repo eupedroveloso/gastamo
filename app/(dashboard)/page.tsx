@@ -71,7 +71,7 @@ export default async function DashboardPage() {
         ]
       : [{ value: 1, color: "var(--color-border-default)" }];
 
-  const panelMembers = memberSpending.map((m) => ({ userId: m.userId, name: m.name }));
+  const panelMembers = memberSpending.map((m: { userId: string; name: string }) => ({ userId: m.userId, name: m.name }));
 
   return (
     <>
