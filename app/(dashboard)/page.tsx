@@ -169,7 +169,7 @@ export default async function DashboardPage() {
               </span>
             </div>
           ) : (
-            memberSpending.map((member: { userId: string; name: string; spent: number; dailyBudget: number }, i) => {
+            memberSpending.map((member: { userId: string; name: string; spent: number; dailyBudget: number }, i: number) => {
               const bgColors = [
                 "var(--color-bg-brand-accent)",
                 "var(--color-bg-brand-muted)",
