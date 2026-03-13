@@ -76,34 +76,38 @@ export async function getDashboardData() {
     }),
   ]);
 
-  const totalSpent = monthExpenses.reduce((acc: number, e) => acc + e.amount, 0);
+  type MonthExpense = { amount: number; type: string; responsibleId: string };
+  type CatExpense = { amount: number };
+  type Member = { userId: string; role: string; budget: number | null; user: { name: string; avatar: string | null } };
+
+  const totalSpent = monthExpenses.reduce((acc: number, e: MonthExpense) => acc + e.amount, 0);
   const daysInMonth = endOfMonth.getDate();
 
   let avulsa = 0, fixa = 0, parcelada = 0;
-  for (const e of monthExpenses) {
+  for (const e of monthExpenses as MonthExpense[]) {
     if (e.type === "fixa") fixa += e.amount;
     else if (e.type === "parcelada") parcelada += e.amount;
     else avulsa += e.amount;
   }
 
   const memberSpendMap = new Map<string, number>();
-  for (const e of monthExpenses) {
+  for (const e of monthExpenses as MonthExpense[]) {
     memberSpendMap.set(e.responsibleId, (memberSpendMap.get(e.responsibleId) ?? 0) + e.amount);
   }
 
   const categoriesWithStats = categories.map((cat) => {
-    const spent = cat.expenses.reduce((acc: number, e) => acc + e.amount, 0);
+    const spent = (cat.expenses as CatExpense[]).reduce((acc: number, e: CatExpense) => acc + e.amount, 0);
     const percentage = cat.limitAmount > 0 ? Math.min(Math.round((spent / cat.limitAmount) * 100), 100) : 0;
     return { id: cat.id, name: cat.name, limitAmount: cat.limitAmount, spent, percentage };
   });
 
-  const membersWithBudget = family.members.filter((m) => (m.budget ?? 0) > 0);
-  const totalAllocated = membersWithBudget.reduce((acc: number, m) => acc + (m.budget ?? 0), 0);
+  const membersWithBudget = (family.members as Member[]).filter((m: Member) => (m.budget ?? 0) > 0);
+  const totalAllocated = membersWithBudget.reduce((acc: number, m: Member) => acc + (m.budget ?? 0), 0);
   const remainingForOthers = Math.max(0, family.budget - totalAllocated);
-  const membersWithoutBudget = family.members.filter((m) => (m.budget ?? 0) <= 0);
+  const membersWithoutBudget = (family.members as Member[]).filter((m: Member) => (m.budget ?? 0) <= 0);
   const sharePerMember = membersWithoutBudget.length > 0 ? remainingForOthers / membersWithoutBudget.length : 0;
 
-  const memberSpending = family.members.map((member) => {
+  const memberSpending = (family.members as Member[]).map((member: Member) => {
     const personalBudget = (member.budget ?? 0) > 0 ? (member.budget ?? 0) : sharePerMember;
     return {
       userId: member.userId,
