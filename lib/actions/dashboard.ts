@@ -76,7 +76,7 @@ export async function getDashboardData() {
     }),
   ]);
 
-  const totalSpent = monthExpenses.reduce((acc, e) => acc + e.amount, 0);
+  const totalSpent = monthExpenses.reduce((acc: number, e) => acc + e.amount, 0);
   const daysInMonth = endOfMonth.getDate();
 
   let avulsa = 0, fixa = 0, parcelada = 0;
@@ -92,13 +92,13 @@ export async function getDashboardData() {
   }
 
   const categoriesWithStats = categories.map((cat) => {
-    const spent = cat.expenses.reduce((acc, e) => acc + e.amount, 0);
+    const spent = cat.expenses.reduce((acc: number, e) => acc + e.amount, 0);
     const percentage = cat.limitAmount > 0 ? Math.min(Math.round((spent / cat.limitAmount) * 100), 100) : 0;
     return { id: cat.id, name: cat.name, limitAmount: cat.limitAmount, spent, percentage };
   });
 
   const membersWithBudget = family.members.filter((m) => (m.budget ?? 0) > 0);
-  const totalAllocated = membersWithBudget.reduce((acc, m) => acc + (m.budget ?? 0), 0);
+  const totalAllocated = membersWithBudget.reduce((acc: number, m) => acc + (m.budget ?? 0), 0);
   const remainingForOthers = Math.max(0, family.budget - totalAllocated);
   const membersWithoutBudget = family.members.filter((m) => (m.budget ?? 0) <= 0);
   const sharePerMember = membersWithoutBudget.length > 0 ? remainingForOthers / membersWithoutBudget.length : 0;
