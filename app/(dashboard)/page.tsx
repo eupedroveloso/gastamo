@@ -99,8 +99,8 @@ export default async function DashboardPage() {
         </h1>
 
         <ExpenseButtonPanel
-          categories={categories.map((c) => ({ id: c.id, name: c.name }))}
-          cards={cards.map((c) => ({ id: c.id, name: c.name }))}
+          categories={categories.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name }))}
+          cards={cards.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name }))}
           members={panelMembers}
         />
       </div>
