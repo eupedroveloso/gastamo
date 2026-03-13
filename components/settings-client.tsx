@@ -9,6 +9,7 @@ import {
   inviteMember,
   createCategory,
   deleteCategory,
+  updateCategoryLimit,
   createCard,
   deleteCard,
   uploadAvatar,
@@ -53,6 +54,7 @@ interface FamilyMember {
 interface Category {
   id: string;
   name: string;
+  limitAmount: number;
 }
 
 interface Card {
@@ -258,6 +260,7 @@ export function SettingsClient({ user, family }: SettingsClientProps) {
   const [memberBudgetState, memberBudgetAction, memberBudgetPending] = useActionState(updateMemberBudget, null);
   const [inviteState, inviteAction, invitePending] = useActionState(inviteMember, null);
   const [categoryState, categoryAction, categoryPending] = useActionState(createCategory, null);
+  const [categoryLimitState, categoryLimitAction, categoryLimitPending] = useActionState(updateCategoryLimit, null);
   const [cardState, cardAction, cardPending] = useActionState(createCard, null);
 
   useEffect(() => {
@@ -1012,12 +1015,13 @@ export function SettingsClient({ user, family }: SettingsClientProps) {
                         padding: "12px 16px",
                         border: "1px solid #F5F5F5",
                         borderRadius: 12,
-                        height: 60,
+                        minHeight: 60,
                         boxSizing: "border-box",
                         marginBottom: 4,
+                        gap: 12,
                       }}
                     >
-                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0 }}>
                         <div
                           style={{
                             width: 36,
@@ -1027,12 +1031,37 @@ export function SettingsClient({ user, family }: SettingsClientProps) {
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
+                            flexShrink: 0,
                           }}
                         >
                           <TagIcon size={16} color="#525252" />
                         </div>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: "#0A0A0A" }}>{cat.name}</span>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: "#0A0A0A", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cat.name}</span>
                       </div>
+                      <form action={categoryLimitAction} style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                        <input type="hidden" name="categoryId" value={cat.id} />
+                        <span style={{ fontSize: 12, color: "#A3A3A3", whiteSpace: "nowrap" }}>Limite</span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 4, border: "1px solid #E5E5E5", borderRadius: 8, padding: "6px 10px", background: "#FAFAFA", width: 140 }}>
+                          <span style={{ fontSize: 12, color: "#525252", fontWeight: 500 }}>R$</span>
+                          <input
+                            name="limitAmount"
+                            defaultValue={cat.limitAmount > 0 ? cat.limitAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 }) : ""}
+                            placeholder="0,00"
+                            style={{ border: "none", outline: "none", background: "transparent", fontSize: 13, fontFamily: "inherit", color: "#0A0A0A", width: "100%" }}
+                          />
+                        </div>
+                        <button
+                          type="submit"
+                          disabled={categoryLimitPending}
+                          style={{
+                            padding: "6px 12px", borderRadius: 8, background: "#0F8F4E", border: "none",
+                            cursor: categoryLimitPending ? "not-allowed" : "pointer", fontSize: 12, fontWeight: 600,
+                            color: "#FFFFFF", fontFamily: "inherit", whiteSpace: "nowrap",
+                          }}
+                        >
+                          Salvar
+                        </button>
+                      </form>
                       <form action={deleteCategoryWithId}>
                         <button
                           type="submit"
@@ -1055,6 +1084,12 @@ export function SettingsClient({ user, family }: SettingsClientProps) {
 
                 {(family?.categories ?? []).length === 0 && (
                   <p style={{ fontSize: 14, color: "#A3A3A3", margin: "8px 0" }}>Nenhuma categoria cadastrada.</p>
+                )}
+                {categoryLimitState?.error && (
+                  <p style={{ color: "#DC2626", fontSize: 13, margin: "4px 0 0" }}>{categoryLimitState.error}</p>
+                )}
+                {categoryLimitState?.success && (
+                  <p style={{ color: "#0F8F4E", fontSize: 13, margin: "4px 0 0" }}>{categoryLimitState.success}</p>
                 )}
               </div>
 

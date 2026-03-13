@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { CalendarRangeIcon, ChevronDownIcon, CloseIcon } from "./icons";
+import { ChevronDownIcon, CloseIcon } from "./icons";
+import { Calendar } from "./calendar";
 import { createExpense } from "@/lib/actions/expenses";
 
 interface Props {
@@ -83,6 +84,7 @@ const inputStyle = {
 export function AddExpensePanel({ open, onClose, categories, cards, members }: Props) {
   const [state, formAction, isPending] = useActionState(createExpense, null);
   const [selectedType, setSelectedType] = useState("avulsa");
+  const [selectedDate, setSelectedDate] = useState("");
 
   useEffect(() => {
     if (state?.success) {
@@ -123,6 +125,7 @@ export function AddExpensePanel({ open, onClose, categories, cards, members }: P
             height: "100%",
           }}
         >
+          <input type="hidden" name="date" value={selectedDate} />
           <div
             style={{
               padding: "var(--space-32)",
@@ -206,10 +209,11 @@ export function AddExpensePanel({ open, onClose, categories, cards, members }: P
               </FormField>
 
               <FormField label="Data do Gasto">
-                <div style={fieldStyle}>
-                  <input name="date" type="date" required style={{ ...inputStyle, color: "var(--color-fg-subtle)" }} />
-                  <CalendarRangeIcon size={16} color="var(--color-fg-subtle)" />
-                </div>
+                <Calendar
+                  value={selectedDate}
+                  onChange={setSelectedDate}
+                  placeholder="Selecione a data"
+                />
               </FormField>
 
               <FormField label="Tipo de Gasto">

@@ -27,7 +27,7 @@ export default async function SettingsPage() {
             },
           },
           categories: {
-            select: { id: true, name: true },
+            select: { id: true, name: true, limitAmount: true },
             orderBy: { createdAt: "asc" },
           },
           cards: {

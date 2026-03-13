@@ -186,6 +186,33 @@ export async function createCategory(prevState: ActionResult, formData: FormData
   }
 }
 
+export async function updateCategoryLimit(prevState: ActionResult, formData: FormData): Promise<ActionResult> {
+  const session = await getSession();
+  if (!session) return { error: "Não autorizado" };
+
+  const categoryId = (formData.get("categoryId") as string)?.trim();
+  if (!categoryId) return { error: "Categoria não informada" };
+
+  const raw = (formData.get("limitAmount") as string)?.trim();
+  const limit = parseBudget(raw);
+  if (limit < 0) return { error: "Limite inválido" };
+
+  try {
+    const member = await db.familyMember.findFirst({ where: { userId: session.userId } });
+    if (!member) return { error: "Família não encontrada" };
+
+    const category = await db.category.findFirst({ where: { id: categoryId, familyId: member.familyId } });
+    if (!category) return { error: "Categoria não encontrada" };
+
+    await db.category.update({ where: { id: categoryId }, data: { limitAmount: limit } });
+    revalidatePath("/settings");
+    revalidatePath("/");
+    return { success: "Limite atualizado" };
+  } catch {
+    return { error: "Erro ao atualizar limite" };
+  }
+}
+
 export async function deleteCategory(categoryId: string): Promise<void> {
   const session = await getSession();
   if (!session) return;
