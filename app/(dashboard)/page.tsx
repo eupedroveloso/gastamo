@@ -294,7 +294,7 @@ export default async function DashboardPage() {
                   borderRadius: "var(--radius-3xl)",
                 }}
               >
-                {expenses.map((expense, i) => (
+                {expenses.map((expense: { id: string; name: string; amount: number; date: Date; category: { id: string; name: string } | null; responsible: { id: string; name: string }; card: { id: string; name: string } | null }, i: number) => (
                   <div
                     key={expense.id}
                     style={{
