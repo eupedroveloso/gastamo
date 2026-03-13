@@ -2,15 +2,7 @@ import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 function createPrismaClient() {
-  let url = process.env.DATABASE_URL as string;
-  if (url) {
-    const sslmode = "sslmode=verify-full";
-    if (url.includes("sslmode=")) {
-      url = url.replace(/sslmode=[^&]+/, sslmode);
-    } else {
-      url += (url.includes("?") ? "&" : "?") + sslmode;
-    }
-  }
+  const url = process.env.DATABASE_URL as string;
   const adapter = new PrismaPg({ connectionString: url });
 
   return new PrismaClient({
