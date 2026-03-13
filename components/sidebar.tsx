@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Grid2Icon, SquareListIcon, MicrochipAiIcon, CogIcon } from "./icons";
+import { Grid2Icon, SquareListIcon, MicrochipAiIcon, CogIcon, BellIcon } from "./icons";
+import { NotificationsPanel } from "./notifications-panel";
 import { AI_ENABLED } from "@/lib/config";
 
 interface SidebarItemProps {
@@ -64,53 +66,80 @@ function getIcon(name: string, color: string) {
 
 export function Sidebar() {
   const pathname = usePathname();
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
 
   return (
-    <aside
-      style={{
-        width: 80,
-        minHeight: "100vh",
-        background: "var(--color-bg-inverse)",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "space-between",
-        paddingTop: "var(--space-16)",
-        paddingBottom: "var(--space-16)",
-        flexShrink: 0,
-      }}
-    >
-      <div />
-
-      <nav
+    <>
+      <aside
         style={{
+          width: 80,
+          minHeight: "100vh",
+          background: "var(--color-bg-inverse)",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          gap: "var(--space-8)",
-          padding: "var(--space-12)",
-          borderRadius: "var(--radius-2xl)",
+          justifyContent: "space-between",
+          paddingTop: "var(--space-16)",
+          paddingBottom: "var(--space-16)",
+          flexShrink: 0,
         }}
       >
-        {navItems.map((item) => {
-          const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
-          const isDisabled = item.icon === "microchip-ai" && !AI_ENABLED;
+        <div />
 
-          return (
-            <SidebarItem
-              key={item.href}
-              href={item.href}
-              icon={getIcon(item.icon, "var(--color-fg-inverse)")}
-              activeIcon={getIcon(item.icon, "var(--color-fg-default)")}
-              active={isActive}
-              disabled={isDisabled}
-              tooltip={isDisabled ? "Em breve" : item.label}
-            />
-          );
-        })}
-      </nav>
+        <nav
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: "var(--space-8)",
+            padding: "var(--space-12)",
+            borderRadius: "var(--radius-2xl)",
+          }}
+        >
+          {navItems.map((item) => {
+            const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+            const isDisabled = item.icon === "microchip-ai" && !AI_ENABLED;
 
-      <div />
-    </aside>
+            return (
+              <SidebarItem
+                key={item.href}
+                href={item.href}
+                icon={getIcon(item.icon, "var(--color-fg-inverse)")}
+                activeIcon={getIcon(item.icon, "var(--color-fg-default)")}
+                active={isActive}
+                disabled={isDisabled}
+                tooltip={isDisabled ? "Em breve" : item.label}
+              />
+            );
+          })}
+        </nav>
+
+        {/* Bottom section: bell icon */}
+        <button
+          type="button"
+          title="Notificações"
+          onClick={() => setNotificationsOpen(true)}
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: "var(--radius-lg)",
+            background: notificationsOpen ? "var(--color-bg-brand-accent)" : "var(--color-bg-inverse)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+            border: "none",
+            transition: "background 0.2s",
+          }}
+        >
+          <BellIcon size={24} color={notificationsOpen ? "var(--color-fg-default)" : "var(--color-fg-inverse)"} />
+        </button>
+      </aside>
+
+      <NotificationsPanel
+        open={notificationsOpen}
+        onClose={() => setNotificationsOpen(false)}
+      />
+    </>
   );
 }

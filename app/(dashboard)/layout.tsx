@@ -25,7 +25,7 @@ export default function DashboardLayout({
           minWidth: 0,
           display: "flex",
           flexDirection: "column",
-          overflow: "auto",
+          overflow: "hidden",
         }}
       >
         <div
@@ -36,7 +36,8 @@ export default function DashboardLayout({
             flex: 1,
             display: "flex",
             flexDirection: "column",
-            minHeight: "calc(100vh - 32px)",
+            minHeight: 0,
+            overflowY: "auto",
           }}
         >
           {children}
