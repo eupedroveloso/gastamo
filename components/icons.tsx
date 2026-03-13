@@ -199,7 +199,7 @@ export function EllipsisHIcon({ size = 16, color = "currentColor", className }: 
 export function BellIcon({ size = 24, color = "currentColor", className }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" className={className}>
-      <path d="M8 1.6a.4.4 0 0 1 .4.4v.503A3.601 3.601 0 0 1 11.6 6v2.8l.8.8H3.6l.8-.8V6A3.601 3.601 0 0 1 7.6 2.503V2a.4.4 0 0 1 .4-.4ZM5.2 6v2.8h5.6V6a2.8 2.8 0 0 0-5.6 0ZM6.4 10.4h3.2a1.6 1.6 0 1 1-3.2 0Zm-3.6-.8.566-.566L4 8.4V6a4.4 4.4 0 0 1 3.6-4.32V1.2a.8.8 0 0 1 .8-.8.8.8 0 0 1 .8.8v.48A4.4 4.4 0 0 1 12.8 6v2.4l.634.634.566.566H2Z" fill={color} />
+      <path d="M8 1.6c-.22 0-.4.18-.4.4v.505A3.201 3.201 0 0 0 4.8 5.6V9l-.97.97a.4.4 0 0 0 .284.683h7.772a.4.4 0 0 0 .283-.684L11.2 9V5.6A3.201 3.201 0 0 0 8.4 2.505V2a.4.4 0 0 0-.4-.4Zm-2 8.8h4a2 2 0 0 1-4 0Z" fill={color} />
     </svg>
   );
 }

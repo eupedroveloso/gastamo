@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useActionState, useEffect } from "react";
+import { useState, useMemo, useActionState, useEffect, useTransition } from "react";
 import {
   FunnelDollarIcon,
   SearchIcon,
@@ -11,7 +11,7 @@ import {
   ChevronDownIcon,
   UploadIcon,
 } from "./icons";
-import { createExpense, updateExpense, deleteExpense } from "@/lib/actions/expenses";
+import { createExpense, updateExpense, deleteExpense, bulkDeleteExpenses } from "@/lib/actions/expenses";
 import { ExpenseImportPanel } from "./expense-import-panel";
 import { Calendar, CalendarRange } from "./calendar";
 
@@ -380,7 +380,7 @@ function SlidePanel({ children, onClose }: { children: React.ReactNode; onClose:
 }
 
 // Column config matching Figma
-const COL_TEMPLATE = "minmax(150px, 2fr) 112px 112px 136px 112px 112px 112px 68px";
+const COL_TEMPLATE = "32px minmax(150px, 2fr) 112px 112px 136px 112px 112px 112px 68px";
 
 export function TransactionsClient({ expenses, categories, cards, members }: Props) {
   const [search, setSearch] = useState("");
@@ -395,6 +395,8 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
 
   const [panelMode, setPanelMode] = useState<"add" | "edit" | "import" | null>(null);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isBulkDeleting, startBulkDelete] = useTransition();
 
   const [createState, createAction, isCreating] = useActionState(createExpense, null);
   const [updateState, updateAction, isUpdating] = useActionState(updateExpense, null);
@@ -406,6 +408,30 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
   useEffect(() => {
     if (updateState?.success) { setPanelMode(null); setEditingExpense(null); }
   }, [updateState]);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filtered.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map((e) => e.id)));
+    }
+  };
+
+  const handleBulkDelete = () => {
+    if (!selectedIds.size) return;
+    startBulkDelete(async () => {
+      await bulkDeleteExpenses(Array.from(selectedIds));
+      setSelectedIds(new Set());
+    });
+  };
 
   const filtered = useMemo(() => {
     return expenses.filter((e) => {
@@ -586,6 +612,47 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
           overflow: "hidden", gap: 8,
         }}
       >
+        {/* Bulk action bar */}
+        {selectedIds.size > 0 && (
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            background: "#FFF7ED", border: "1px solid #FED7AA",
+            borderRadius: 16, padding: "10px 20px",
+          }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "#92400E" }}>
+              {selectedIds.size} {selectedIds.size === 1 ? "gasto selecionado" : "gastos selecionados"}
+            </span>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => setSelectedIds(new Set())}
+                style={{
+                  padding: "6px 14px", borderRadius: 10, border: "1px solid #FED7AA",
+                  background: "transparent", cursor: "pointer", fontFamily: "inherit",
+                  fontSize: 13, fontWeight: 600, color: "#92400E",
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleBulkDelete}
+                disabled={isBulkDeleting}
+                style={{
+                  padding: "6px 14px", borderRadius: 10, border: "none",
+                  background: isBulkDeleting ? "#FCA5A5" : "#EF4444",
+                  cursor: isBulkDeleting ? "not-allowed" : "pointer",
+                  fontFamily: "inherit", fontSize: 13, fontWeight: 600, color: "#FFFFFF",
+                  display: "flex", alignItems: "center", gap: 6,
+                }}
+              >
+                <TrashCanIcon size={13} color="#FFFFFF" />
+                {isBulkDeleting ? "Apagando..." : "Apagar selecionados"}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Table Header */}
         <div
           style={{
@@ -597,6 +664,16 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
             borderRadius: 24,
           }}
         >
+          {/* Select all checkbox */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <input
+              type="checkbox"
+              checked={filtered.length > 0 && selectedIds.size === filtered.length}
+              ref={(el) => { if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size < filtered.length; }}
+              onChange={toggleSelectAll}
+              style={{ width: 14, height: 14, cursor: "pointer", accentColor: "#0F8F4E" }}
+            />
+          </div>
           <span style={{ fontWeight: 600, fontSize: 14, color: "#0A0A0A", lineHeight: 1.5 }}>
             Nome do Gasto
           </span>
@@ -632,6 +709,7 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
                 const installmentLabel = expense.type === "parcelada" && expense.currentInstallment && expense.totalInstallments
                   ? ` ${expense.currentInstallment}/${expense.totalInstallments}`
                   : "";
+                const isSelected = selectedIds.has(expense.id);
                 return (
                   <div
                     key={expense.id}
@@ -642,6 +720,7 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
                       padding: expense.pending ? "15px 23px" : "16px 24px",
                       borderBottom: (!expense.pending && i < filtered.length - 1) ? "1px solid #F5F5F5" : "none",
                       alignItems: "center",
+                      background: isSelected ? "#F0FDF4" : undefined,
                       ...(expense.pending
                         ? {
                             border: "1px solid #EAB308",
@@ -652,6 +731,16 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
                         : {}),
                     }}
                   >
+                    {/* Checkbox */}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleSelect(expense.id)}
+                        style={{ width: 14, height: 14, cursor: "pointer", accentColor: "#0F8F4E" }}
+                      />
+                    </div>
+
                     {/* Name */}
                     <span style={{ fontWeight: 600, fontSize: 14, color: "#0A0A0A", lineHeight: 1.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {expense.name}

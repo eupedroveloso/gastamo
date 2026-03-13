@@ -124,6 +124,31 @@ export async function deleteExpense(expenseId: string): Promise<void> {
   }
 }
 
+export async function bulkDeleteExpenses(ids: string[]): Promise<{ success?: boolean; error?: string }> {
+  const session = await getSession();
+  if (!session) return { error: "Não autenticado" };
+
+  if (!ids.length) return { error: "Nenhum gasto selecionado" };
+
+  try {
+    const member = await db.familyMember.findFirst({
+      where: { userId: session.userId },
+      select: { familyId: true },
+    });
+    if (!member) return { error: "Família não encontrada" };
+
+    await db.expense.deleteMany({
+      where: { id: { in: ids }, familyId: member.familyId },
+    });
+
+    revalidatePath("/transactions");
+    revalidatePath("/");
+    return { success: true };
+  } catch {
+    return { error: "Erro ao apagar gastos" };
+  }
+}
+
 export async function bulkCreateExpenses(
   expenses: Array<{
     name: string;

@@ -394,7 +394,7 @@ export function SettingsClient({ user, family }: SettingsClientProps) {
                 </svg>
               </div>
               <span style={{ fontSize: 14, fontWeight: 600, color: "#525252" }}>
-                Sair da conta
+                Sair
               </span>
             </button>
           </form>

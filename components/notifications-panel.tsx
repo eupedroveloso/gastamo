@@ -1,12 +1,30 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { CloseIcon, BellIcon } from "./icons";
+import { CloseIcon, BellIcon, TrashCanIcon } from "./icons";
 import { getNotifications, type Notification } from "@/lib/actions/notifications";
+
+const DISMISSED_KEY = "gastamo_dismissed_notifications";
 
 interface Props {
   open: boolean;
   onClose: () => void;
+}
+
+function getDismissed(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = localStorage.getItem(DISMISSED_KEY);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function saveDismissed(ids: Set<string>) {
+  try {
+    localStorage.setItem(DISMISSED_KEY, JSON.stringify(Array.from(ids)));
+  } catch {}
 }
 
 function timeAgo(date: Date): string {
@@ -28,13 +46,7 @@ function Avatar({ name, avatar }: { name?: string; avatar?: string | null }) {
       <img
         src={avatar}
         alt={name}
-        style={{
-          width: 32,
-          height: 32,
-          borderRadius: "50%",
-          objectFit: "cover",
-          flexShrink: 0,
-        }}
+        style={{ width: 32, height: 32, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }}
       />
     );
   }
@@ -44,17 +56,10 @@ function Avatar({ name, avatar }: { name?: string; avatar?: string | null }) {
   return (
     <div
       style={{
-        width: 32,
-        height: 32,
-        borderRadius: "50%",
+        width: 32, height: 32, borderRadius: "50%",
         background: "var(--color-bg-brand-accent)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontSize: 12,
-        fontWeight: 600,
-        color: "var(--color-fg-inverse)",
-        flexShrink: 0,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontSize: 12, fontWeight: 600, color: "var(--color-fg-inverse)", flexShrink: 0,
       }}
     >
       {initials}
@@ -67,14 +72,9 @@ function AlertDot({ type }: { type: Notification["type"] }) {
   return (
     <div
       style={{
-        width: 32,
-        height: 32,
-        borderRadius: "50%",
+        width: 32, height: 32, borderRadius: "50%",
         background: `${bg}20`,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
+        display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
       }}
     >
       <div style={{ width: 10, height: 10, borderRadius: "50%", background: bg }} />
@@ -83,17 +83,34 @@ function AlertDot({ type }: { type: Notification["type"] }) {
 }
 
 export function NotificationsPanel({ open, onClose }: Props) {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [allNotifications, setAllNotifications] = useState<Notification[]>([]);
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
     if (open) {
+      setDismissed(getDismissed());
       startTransition(async () => {
         const data = await getNotifications();
-        setNotifications(data);
+        setAllNotifications(data);
       });
     }
   }, [open]);
+
+  const visible = allNotifications.filter((n) => !dismissed.has(n.id));
+
+  const dismiss = (id: string) => {
+    const next = new Set(dismissed);
+    next.add(id);
+    setDismissed(next);
+    saveDismissed(next);
+  };
+
+  const dismissAll = () => {
+    const next = new Set(allNotifications.map((n) => n.id));
+    setDismissed(next);
+    saveDismissed(next);
+  };
 
   if (!open) return null;
 
@@ -108,22 +125,22 @@ export function NotificationsPanel({ open, onClose }: Props) {
         style={{
           position: "fixed",
           top: 0,
-          right: 0,
+          left: 80,
           bottom: 0,
-          width: 410,
+          width: 360,
           zIndex: 50,
           display: "flex",
           flexDirection: "column",
           background: "var(--color-bg-default)",
-          borderLeft: "var(--border-sm) solid var(--color-border-muted)",
-          borderRadius: "var(--radius-4xl) 0 0 var(--radius-4xl)",
-          animation: "slideIn 0.3s ease-out",
+          borderRight: "var(--border-sm) solid var(--color-border-muted)",
+          borderRadius: "0 var(--radius-4xl) var(--radius-4xl) 0",
+          animation: "slideInLeft 0.3s ease-out",
         }}
       >
         {/* Header */}
         <div
           style={{
-            padding: "var(--space-32) var(--space-32) var(--space-16)",
+            padding: "var(--space-32) var(--space-24) var(--space-16)",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
@@ -135,67 +152,61 @@ export function NotificationsPanel({ open, onClose }: Props) {
             <span style={{ fontWeight: 400, fontSize: 16, color: "var(--color-fg-default)", lineHeight: 1.5 }}>
               Notificações
             </span>
-            {notifications.length > 0 && (
-              <span
-                style={{
-                  background: "var(--color-bg-brand-default)",
-                  color: "var(--color-fg-inverse)",
-                  fontSize: 11,
-                  fontWeight: 600,
-                  borderRadius: 99,
-                  padding: "1px 7px",
-                  lineHeight: 1.6,
-                }}
-              >
-                {notifications.length}
+            {visible.length > 0 && (
+              <span style={{
+                background: "var(--color-bg-brand-default)",
+                color: "var(--color-fg-inverse)",
+                fontSize: 11, fontWeight: 600, borderRadius: 99,
+                padding: "1px 7px", lineHeight: 1.6,
+              }}>
+                {visible.length}
               </span>
             )}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              width: 48,
-              height: 32,
-              background: "var(--color-bg-default)",
-              border: "var(--border-sm) solid var(--color-border-default)",
-              borderRadius: "var(--radius-2xl)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-            }}
-          >
-            <CloseIcon size={16} color="var(--color-fg-default)" />
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-8)" }}>
+            {visible.length > 0 && (
+              <button
+                type="button"
+                onClick={dismissAll}
+                title="Limpar todas"
+                style={{
+                  height: 32, padding: "0 12px",
+                  background: "var(--color-bg-subtle)",
+                  border: "var(--border-sm) solid var(--color-border-default)",
+                  borderRadius: "var(--radius-2xl)",
+                  cursor: "pointer", fontSize: 12, fontWeight: 600,
+                  color: "var(--color-fg-muted)", fontFamily: "inherit",
+                  display: "flex", alignItems: "center",
+                }}
+              >
+                Limpar tudo
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                width: 48, height: 32,
+                background: "var(--color-bg-default)",
+                border: "var(--border-sm) solid var(--color-border-default)",
+                borderRadius: "var(--radius-2xl)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                cursor: "pointer",
+              }}
+            >
+              <CloseIcon size={16} color="var(--color-fg-default)" />
+            </button>
+          </div>
         </div>
 
         {/* Content */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "var(--space-16) var(--space-32) var(--space-32)" }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: "var(--space-16) var(--space-24) var(--space-32)" }}>
           {isPending ? (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                height: 200,
-                color: "var(--color-fg-muted)",
-                fontSize: 14,
-              }}
-            >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 200, color: "var(--color-fg-muted)", fontSize: 14 }}>
               Carregando...
             </div>
-          ) : notifications.length === 0 ? (
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                height: 200,
-                gap: "var(--space-8)",
-              }}
-            >
+          ) : visible.length === 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: 200, gap: "var(--space-8)" }}>
               <BellIcon size={32} color="var(--color-fg-subtle)" />
               <span style={{ fontSize: 14, color: "var(--color-fg-subtle)" }}>
                 Nenhuma notificação
@@ -203,13 +214,11 @@ export function NotificationsPanel({ open, onClose }: Props) {
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
-              {notifications.map((n) => (
+              {visible.map((n) => (
                 <div
                   key={n.id}
                   style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: "var(--space-12)",
+                    display: "flex", alignItems: "flex-start", gap: "var(--space-12)",
                     padding: "var(--space-12)",
                     borderRadius: "var(--radius-xl)",
                     background: "var(--color-bg-subtle)",
@@ -221,40 +230,30 @@ export function NotificationsPanel({ open, onClose }: Props) {
                     <AlertDot type={n.type} />
                   )}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: "var(--color-fg-default)",
-                        lineHeight: 1.4,
-                        marginBottom: 2,
-                      }}
-                    >
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-fg-default)", lineHeight: 1.4, marginBottom: 2 }}>
                       {n.title}
                     </div>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: "var(--color-fg-muted)",
-                        lineHeight: 1.4,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
+                    <div style={{ fontSize: 12, color: "var(--color-fg-muted)", lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {n.description}
                     </div>
+                    <div style={{ fontSize: 11, color: "var(--color-fg-subtle)", marginTop: 4 }}>
+                      {timeAgo(n.createdAt)}
+                    </div>
                   </div>
-                  <span
+                  <button
+                    type="button"
+                    onClick={() => dismiss(n.id)}
+                    title="Remover"
                     style={{
-                      fontSize: 11,
-                      color: "var(--color-fg-subtle)",
-                      flexShrink: 0,
-                      paddingTop: 2,
+                      width: 24, height: 24, border: "none", background: "transparent",
+                      cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                      flexShrink: 0, opacity: 0.4, borderRadius: "var(--radius-lg)",
                     }}
+                    onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
+                    onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.4")}
                   >
-                    {timeAgo(n.createdAt)}
-                  </span>
+                    <CloseIcon size={12} color="var(--color-fg-muted)" />
+                  </button>
                 </div>
               ))}
             </div>
@@ -263,8 +262,8 @@ export function NotificationsPanel({ open, onClose }: Props) {
       </div>
 
       <style>{`
-        @keyframes slideIn {
-          from { transform: translateX(100%); }
+        @keyframes slideInLeft {
+          from { transform: translateX(-100%); }
           to { transform: translateX(0); }
         }
       `}</style>
