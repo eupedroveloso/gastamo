@@ -78,6 +78,7 @@ export async function getDashboardData() {
 
   type MonthExpense = { amount: number; type: string; responsibleId: string };
   type CatExpense = { amount: number };
+  type Category = { id: string; name: string; limitAmount: number; expenses: CatExpense[] };
   type Member = { userId: string; role: string; budget: number | null; user: { name: string; avatar: string | null } };
 
   const totalSpent = monthExpenses.reduce((acc: number, e: MonthExpense) => acc + e.amount, 0);
@@ -95,7 +96,7 @@ export async function getDashboardData() {
     memberSpendMap.set(e.responsibleId, (memberSpendMap.get(e.responsibleId) ?? 0) + e.amount);
   }
 
-  const categoriesWithStats = categories.map((cat) => {
+  const categoriesWithStats = (categories as Category[]).map((cat: Category) => {
     const spent = (cat.expenses as CatExpense[]).reduce((acc: number, e: CatExpense) => acc + e.amount, 0);
     const percentage = cat.limitAmount > 0 ? Math.min(Math.round((spent / cat.limitAmount) * 100), 100) : 0;
     return { id: cat.id, name: cat.name, limitAmount: cat.limitAmount, spent, percentage };
