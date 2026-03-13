@@ -62,14 +62,17 @@ export default async function DashboardPage() {
   const totalBudget = family?.budget ?? 0;
   const dailyBudget = daysInMonth && totalBudget > 0 ? totalBudget / daysInMonth : 0;
 
+  const freeBudget = Math.max(0, totalBudget - totalSpent);
+
   const donutSegments =
     totalSpent > 0
       ? [
-          { value: typeStats.avulsa || 0.001, color: "#A3A3A3" },
-          { value: typeStats.fixa || 0.001, color: "#0F8F4E" },
-          { value: typeStats.parcelada || 0.001, color: "#1A56DB" },
+          { value: typeStats.avulsa || 0.001, color: "#99E83A" },
+          { value: typeStats.fixa || 0.001, color: "#D6F5E3" },
+          { value: typeStats.parcelada || 0.001, color: "#0C7341" },
+          ...(freeBudget > 0 ? [{ value: freeBudget, color: "#FAFAFA" }] : []),
         ]
-      : [{ value: 1, color: "var(--color-border-default)" }];
+      : [{ value: 1, color: "#FAFAFA" }];
 
   const panelMembers = memberSpending.map((m: { userId: string; name: string }) => ({ userId: m.userId, name: m.name }));
 
@@ -377,51 +380,44 @@ export default async function DashboardPage() {
                 size={200}
                 strokeWidth={32}
                 centerLabel={formatBRL(totalSpent)}
-                centerSublabel={totalBudget > 0 ? `De ${formatBRL(totalBudget)}` : "Total gasto"}
+                centerSublabel={`De ${formatBRL(totalBudget)}`}
               />
 
-              <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", alignSelf: "stretch" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%", padding: "0 16px" }}>
                 {[
-                  { color: "#A3A3A3", label: "Avulsa", value: typeStats.avulsa },
-                  { color: "#0F8F4E", label: "Fixa", value: typeStats.fixa },
-                  { color: "#1A56DB", label: "Parcelada", value: typeStats.parcelada },
-                ].map((item, i) => {
-                  const pct = totalSpent > 0 ? Math.round((item.value / totalSpent) * 100) : 0;
-                  return (
-                    <div
-                      key={i}
+                  { bg: "#FAFAFA", labelColor: "#0A0A0A", label: "Orçamento livre", value: freeBudget },
+                  { bg: "#0C7341", labelColor: "#FFFFFF", label: "Parcelado", value: typeStats.parcelada },
+                  { bg: "#99E83A", labelColor: "#0A0A0A", label: "Avulsa", value: typeStats.avulsa },
+                  { bg: "#D6F5E3", labelColor: "#0F8F4E", label: "Fixo", value: typeStats.fixa },
+                ].map((item, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <span
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 12,
+                        background: item.bg,
+                        color: item.labelColor,
+                        fontSize: 12,
+                        fontWeight: 600,
+                        lineHeight: 1.5,
+                        letterSpacing: "0.2px",
+                        padding: "4px 8px",
+                        borderRadius: 8,
+                        whiteSpace: "nowrap",
                       }}
                     >
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <div
-                          style={{
-                            width: 12,
-                            height: 12,
-                            borderRadius: 4,
-                            background: item.color,
-                            flexShrink: 0,
-                          }}
-                        />
-                        <span style={{ fontSize: 12, fontWeight: 400, color: "#525252", lineHeight: 1.5 }}>
-                          {item.label}
-                        </span>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ fontSize: 12, fontWeight: 600, color: "#0A0A0A", lineHeight: 1.5 }}>
-                          {formatBRL(item.value)}
-                        </span>
-                        <span style={{ fontSize: 12, fontWeight: 400, color: "#A3A3A3", lineHeight: 1.5, minWidth: 36 }}>
-                          {pct}%
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
+                      {item.label}
+                    </span>
+                    <span style={{ fontSize: 14, fontWeight: 400, color: "#0A0A0A", lineHeight: 1.5, whiteSpace: "nowrap" }}>
+                      {formatBRL(item.value)}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
 
