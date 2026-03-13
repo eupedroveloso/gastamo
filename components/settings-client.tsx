@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useActionState, useRef, useEffect } from "react";
+import { useState, useActionState, useRef, useEffect, useTransition } from "react";
 import {
   updateProfile,
   updateFamilyName,
@@ -14,6 +14,7 @@ import {
   deleteCard,
   uploadAvatar,
   deleteAccount,
+  removeFamilyMember,
 } from "@/lib/actions/settings";
 import { logout } from "@/lib/actions/auth";
 import {
@@ -259,6 +260,9 @@ export function SettingsClient({ user, family }: SettingsClientProps) {
   const [familyBudgetState, familyBudgetAction, familyBudgetPending] = useActionState(updateFamilyBudget, null);
   const [memberBudgetState, memberBudgetAction, memberBudgetPending] = useActionState(updateMemberBudget, null);
   const [inviteState, inviteAction, invitePending] = useActionState(inviteMember, null);
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+  const [isRemoving, startRemove] = useTransition();
   const [categoryState, categoryAction, categoryPending] = useActionState(createCategory, null);
   const [categoryLimitState, categoryLimitAction, categoryLimitPending] = useActionState(updateCategoryLimit, null);
   const [cardState, cardAction, cardPending] = useActionState(createCard, null);
@@ -810,119 +814,235 @@ export function SettingsClient({ user, family }: SettingsClientProps) {
                   {/* Members */}
                   <p style={sectionTitleStyle}>Integrantes</p>
                   <div style={{ display: "flex", flexDirection: "column" }}>
-                    {family.members.map((member) => {
-                      const memberInitials = member.user.name
-                        .split(" ")
-                        .map((n) => n[0])
-                        .join("")
-                        .toUpperCase()
-                        .slice(0, 2);
-                      const isAdmin = member.role === "admin";
-                      return (
-                        <div
-                          key={member.id}
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            padding: "12px 16px",
-                            border: "1px solid #F5F5F5",
-                            borderRadius: 12,
-                            minHeight: 60,
-                            boxSizing: "border-box",
-                            marginBottom: 4,
-                          }}
-                        >
-                          <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 180 }}>
+                    {(() => {
+                      const myMember = family.members.find((m) => m.userId === user.id);
+                      const iAmAdmin = myMember?.role === "admin";
+                      return family.members.map((member) => {
+                        const memberInitials = member.user.name
+                          .split(" ")
+                          .map((n) => n[0])
+                          .join("")
+                          .toUpperCase()
+                          .slice(0, 2);
+                        const isAdmin = member.role === "admin";
+                        const isMe = member.userId === user.id;
+                        const isConfirming = confirmRemoveId === member.id;
+
+                        return (
+                          <div
+                            key={member.id}
+                            style={{
+                              display: "flex",
+                              flexDirection: "column",
+                              border: `1px solid ${isConfirming ? "#FEE2E2" : "#F5F5F5"}`,
+                              borderRadius: 12,
+                              marginBottom: 4,
+                              overflow: "hidden",
+                              transition: "border-color 0.2s",
+                            }}
+                          >
                             <div
                               style={{
-                                width: 36,
-                                height: 36,
-                                borderRadius: "50%",
-                                background: "#F0FAF5",
                                 display: "flex",
+                                justifyContent: "space-between",
                                 alignItems: "center",
-                                justifyContent: "center",
-                                fontSize: 12,
-                                fontWeight: 700,
-                                color: "#0F8F4E",
-                                flexShrink: 0,
-                                overflow: "hidden",
+                                padding: "12px 16px",
+                                minHeight: 60,
+                                boxSizing: "border-box",
                               }}
                             >
-                              {member.user.avatar ? (
-                                <img
-                                  src={member.user.avatar}
-                                  alt={member.user.name}
-                                  style={{ width: 36, height: 36, objectFit: "cover" }}
-                                />
-                              ) : (
-                                memberInitials
-                              )}
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                              <span style={{ fontSize: 13, fontWeight: 600, color: "#0A0A0A" }}>
-                                {member.user.name}
-                              </span>
-                              <span style={{ fontSize: 12, color: "#525252", letterSpacing: "0.02em" }}>
-                                {member.user.email}
-                              </span>
-                            </div>
-                          </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                            <form action={memberBudgetAction} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                              <input type="hidden" name="memberId" value={member.id} />
-                              <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#FAFAFA", border: "1px solid #E5E5E5", borderRadius: 8, padding: "4px 10px", width: 120 }}>
-                                <span style={{ fontSize: 12, color: "#525252" }}>R$</span>
-                                <input
-                                  name="memberBudget"
-                                  type="text"
-                                  defaultValue={(member.budget ?? 0) > 0 ? (member.budget ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}
-                                  placeholder="Orçamento"
-                                  style={{ ...inputTextStyle, fontSize: 12, padding: 0, width: 70 }}
-                                />
+                              <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 180 }}>
+                                <div
+                                  style={{
+                                    width: 36,
+                                    height: 36,
+                                    borderRadius: "50%",
+                                    background: "#F0FAF5",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                    color: "#0F8F4E",
+                                    flexShrink: 0,
+                                    overflow: "hidden",
+                                  }}
+                                >
+                                  {member.user.avatar ? (
+                                    <img
+                                      src={member.user.avatar}
+                                      alt={member.user.name}
+                                      style={{ width: 36, height: 36, objectFit: "cover" }}
+                                    />
+                                  ) : (
+                                    memberInitials
+                                  )}
+                                </div>
+                                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                                  <span style={{ fontSize: 13, fontWeight: 600, color: "#0A0A0A" }}>
+                                    {member.user.name}
+                                    {isMe && (
+                                      <span style={{ fontSize: 11, color: "#A3A3A3", fontWeight: 400, marginLeft: 6 }}>
+                                        (você)
+                                      </span>
+                                    )}
+                                  </span>
+                                  <span style={{ fontSize: 12, color: "#525252", letterSpacing: "0.02em" }}>
+                                    {member.user.email}
+                                  </span>
+                                </div>
                               </div>
-                              <button
-                                type="submit"
-                                disabled={memberBudgetPending}
-                                style={{
-                                  padding: "4px 10px",
-                                  borderRadius: 6,
-                                  background: "#0F8F4E",
-                                  border: "none",
-                                  cursor: memberBudgetPending ? "not-allowed" : "pointer",
-                                  fontSize: 11,
-                                  fontWeight: 600,
-                                  color: "#FFFFFF",
-                                  fontFamily: "inherit",
-                                  opacity: memberBudgetPending ? 0.7 : 1,
-                                }}
-                              >
-                                Salvar
-                              </button>
-                            </form>
-                            <div
-                              style={{
-                                padding: "4px 10px",
-                                borderRadius: 9999,
-                                background: isAdmin ? "#F0FAF5" : "#F5F5F5",
-                              }}
-                            >
-                              <span
-                                style={{
-                                  fontSize: 12,
-                                  fontWeight: 600,
-                                  color: isAdmin ? "#0F8F4E" : "#525252",
-                                  letterSpacing: "0.02em",
-                                }}
-                              >
-                                {isAdmin ? "Admin" : "Membro"}
-                              </span>
+                              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                                <form action={memberBudgetAction} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                  <input type="hidden" name="memberId" value={member.id} />
+                                  <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#FAFAFA", border: "1px solid #E5E5E5", borderRadius: 8, padding: "4px 10px", width: 120 }}>
+                                    <span style={{ fontSize: 12, color: "#525252" }}>R$</span>
+                                    <input
+                                      name="memberBudget"
+                                      type="text"
+                                      defaultValue={(member.budget ?? 0) > 0 ? (member.budget ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}
+                                      placeholder="Orçamento"
+                                      style={{ ...inputTextStyle, fontSize: 12, padding: 0, width: 70 }}
+                                    />
+                                  </div>
+                                  <button
+                                    type="submit"
+                                    disabled={memberBudgetPending}
+                                    style={{
+                                      padding: "4px 10px",
+                                      borderRadius: 6,
+                                      background: "#0F8F4E",
+                                      border: "none",
+                                      cursor: memberBudgetPending ? "not-allowed" : "pointer",
+                                      fontSize: 11,
+                                      fontWeight: 600,
+                                      color: "#FFFFFF",
+                                      fontFamily: "inherit",
+                                      opacity: memberBudgetPending ? 0.7 : 1,
+                                    }}
+                                  >
+                                    Salvar
+                                  </button>
+                                </form>
+                                <div
+                                  style={{
+                                    padding: "4px 10px",
+                                    borderRadius: 9999,
+                                    background: isAdmin ? "#F0FAF5" : "#F5F5F5",
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      fontSize: 12,
+                                      fontWeight: 600,
+                                      color: isAdmin ? "#0F8F4E" : "#525252",
+                                      letterSpacing: "0.02em",
+                                    }}
+                                  >
+                                    {isAdmin ? "Admin" : "Membro"}
+                                  </span>
+                                </div>
+                                {iAmAdmin && !isMe && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setRemoveError(null);
+                                      setConfirmRemoveId(isConfirming ? null : member.id);
+                                    }}
+                                    title="Remover integrante"
+                                    style={{
+                                      width: 30,
+                                      height: 30,
+                                      borderRadius: 8,
+                                      border: "1px solid #FEE2E2",
+                                      background: isConfirming ? "#FEF2F2" : "#FFF",
+                                      cursor: "pointer",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      flexShrink: 0,
+                                      transition: "background 0.15s",
+                                    }}
+                                  >
+                                    <TrashCanIcon size={14} color="#DC2626" />
+                                  </button>
+                                )}
+                              </div>
                             </div>
+
+                            {/* Inline confirmation */}
+                            {isConfirming && (
+                              <div
+                                style={{
+                                  padding: "10px 16px",
+                                  background: "#FEF2F2",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "space-between",
+                                  gap: 12,
+                                  borderTop: "1px solid #FEE2E2",
+                                }}
+                              >
+                                <span style={{ fontSize: 13, color: "#991B1B", fontWeight: 500 }}>
+                                  Remover <strong>{member.user.name}</strong> da família?
+                                </span>
+                                {removeError && (
+                                  <span style={{ fontSize: 12, color: "#DC2626" }}>{removeError}</span>
+                                )}
+                                <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => { setConfirmRemoveId(null); setRemoveError(null); }}
+                                    style={{
+                                      padding: "4px 12px",
+                                      borderRadius: 6,
+                                      border: "1px solid #E5E5E5",
+                                      background: "#FFF",
+                                      fontSize: 12,
+                                      fontWeight: 600,
+                                      cursor: "pointer",
+                                      fontFamily: "inherit",
+                                      color: "#525252",
+                                    }}
+                                  >
+                                    Cancelar
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={isRemoving}
+                                    onClick={() => {
+                                      setRemoveError(null);
+                                      startRemove(async () => {
+                                        const result = await removeFamilyMember(member.id);
+                                        if (result?.error) {
+                                          setRemoveError(result.error);
+                                        } else {
+                                          setConfirmRemoveId(null);
+                                        }
+                                      });
+                                    }}
+                                    style={{
+                                      padding: "4px 12px",
+                                      borderRadius: 6,
+                                      border: "none",
+                                      background: isRemoving ? "#F87171" : "#DC2626",
+                                      fontSize: 12,
+                                      fontWeight: 600,
+                                      color: "#FFF",
+                                      cursor: isRemoving ? "not-allowed" : "pointer",
+                                      fontFamily: "inherit",
+                                      opacity: isRemoving ? 0.7 : 1,
+                                    }}
+                                  >
+                                    {isRemoving ? "Removendo…" : "Confirmar remoção"}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      });
+                    })()}
                   </div>
 
                   <div style={dividerStyle} />

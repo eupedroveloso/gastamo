@@ -287,6 +287,36 @@ export async function uploadAvatar(prevState: ActionResult, formData: FormData):
   }
 }
 
+export async function removeFamilyMember(memberId: string): Promise<ActionResult> {
+  const session = await getSession();
+  if (!session) return { error: "Não autorizado" };
+
+  try {
+    const myMember = await db.familyMember.findFirst({
+      where: { userId: session.userId },
+      select: { id: true, familyId: true, role: true },
+    });
+    if (!myMember) return { error: "Família não encontrada" };
+
+    if (myMember.role !== "admin") return { error: "Apenas administradores podem remover integrantes" };
+    if (myMember.id === memberId) return { error: "Você não pode remover a si mesmo" };
+
+    const target = await db.familyMember.findFirst({
+      where: { id: memberId, familyId: myMember.familyId },
+      select: { id: true },
+    });
+    if (!target) return { error: "Integrante não encontrado" };
+
+    await db.familyMember.delete({ where: { id: memberId } });
+
+    revalidatePath("/settings");
+    revalidatePath("/");
+    return { success: "Integrante removido da família" };
+  } catch {
+    return { error: "Erro ao remover integrante" };
+  }
+}
+
 export async function deleteAccount(): Promise<ActionResult> {
   const session = await getSession();
   if (!session) return { error: "Não autorizado" };
