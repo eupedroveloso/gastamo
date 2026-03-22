@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { requireDatabaseUrl } from "@/lib/database-url";
 
 /** Evita aviso do pg-connection-string: require/prefer/verify-ca viram verify-full de forma explícita. */
 function normalizePgSslMode(url: string): string {
@@ -17,7 +18,7 @@ function normalizePgSslMode(url: string): string {
 }
 
 function createPrismaClient() {
-  const raw = process.env.DATABASE_URL as string;
+  const raw = requireDatabaseUrl();
   const url = normalizePgSslMode(raw);
   const adapter = new PrismaPg({ connectionString: url });
 

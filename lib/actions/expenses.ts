@@ -39,7 +39,7 @@ export async function createExpense(
   });
   if (!familyMember) return { error: "Família não encontrada" };
 
-  await db.expense.create({
+  const expense = await db.expense.create({
     data: {
       name,
       invoiceId: invoiceId || null,
@@ -53,7 +53,25 @@ export async function createExpense(
       responsibleId,
       cardId: cardId || null,
     },
+    include: { responsible: { select: { name: true } } },
   });
+
+  // Notify other family members
+  const otherMembers = await db.familyMember.findMany({
+    where: { familyId: familyMember.familyId, userId: { not: session.userId } },
+    select: { userId: true },
+  });
+  if (otherMembers.length > 0) {
+    const amountFmt = amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    await db.notification.createMany({
+      data: otherMembers.map((m) => ({
+        userId: m.userId,
+        type: "expense_added",
+        title: `${expense.responsible.name} adicionou um gasto`,
+        description: `${name} · ${amountFmt}`,
+      })),
+    });
+  }
 
   revalidatePath("/");
   revalidatePath("/transactions");
@@ -116,7 +134,32 @@ export async function deleteExpense(expenseId: string): Promise<void> {
   if (!session) return;
 
   try {
-    await db.expense.delete({ where: { id: expenseId } });
+    const expense = await db.expense.findUnique({
+      where: { id: expenseId },
+      include: {
+        responsible: { select: { name: true } },
+        family: { include: { members: { select: { userId: true } } } },
+      },
+    });
+
+    if (expense) {
+      await db.expense.delete({ where: { id: expenseId } });
+
+      // Notify other family members
+      const otherMembers = expense.family.members.filter((m) => m.userId !== session.userId);
+      if (otherMembers.length > 0) {
+        const amountFmt = expense.amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+        await db.notification.createMany({
+          data: otherMembers.map((m) => ({
+            userId: m.userId,
+            type: "expense_deleted",
+            title: `${session.user.name} excluiu um gasto`,
+            description: `"${expense.name}" (${amountFmt}) foi removido.`,
+          })),
+        });
+      }
+    }
+
     revalidatePath("/transactions");
     revalidatePath("/");
   } catch {
@@ -187,52 +230,4 @@ export async function bulkCreateExpenses(
   revalidatePath("/transactions");
   revalidatePath("/");
   return { success: true, count: expenses.length };
-}
-
-export async function getTransactionsData() {
-  const session = await getSession();
-  if (!session) return null;
-
-  const member = await db.familyMember.findFirst({
-    where: { userId: session.userId },
-    select: { familyId: true },
-  });
-  if (!member) return null;
-
-  const fid = member.familyId;
-
-  const [expenses, categories, cards, members] = await Promise.all([
-    db.expense.findMany({
-      where: { familyId: fid },
-      orderBy: { date: "desc" },
-      select: {
-        id: true, name: true, amount: true, date: true, type: true,
-        pending: true, totalInstallments: true, currentInstallment: true, invoiceId: true,
-        category: { select: { id: true, name: true } },
-        responsible: { select: { id: true, name: true } },
-        card: { select: { id: true, name: true } },
-      },
-    }),
-    db.category.findMany({
-      where: { familyId: fid },
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
-    db.card.findMany({
-      where: { familyId: fid },
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
-    db.familyMember.findMany({
-      where: { familyId: fid },
-      select: { userId: true, user: { select: { id: true, name: true } } },
-    }),
-  ]);
-
-  return {
-    expenses,
-    categories,
-    cards,
-    members: members.map((m: { userId: string; user: { id: string; name: string } }) => ({ userId: m.userId, name: m.user.name })),
-  };
 }

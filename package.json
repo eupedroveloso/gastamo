@@ -3,8 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "DATABASE_URL='postgresql://x:x@localhost:5432/x' prisma generate && next build",
+    "dev": "next dev --webpack",
+    "build": "prisma generate && prisma db push && next build --webpack",
+    "postinstall": "prisma generate",
     "start": "next start",
     "lint": "eslint"
   },

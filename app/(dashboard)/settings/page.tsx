@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { getPendingInvitesForUser } from "@/lib/data/settings-invites";
 import { SettingsClient } from "@/components/settings-client";
 
 export default async function SettingsPage() {
@@ -9,35 +10,38 @@ export default async function SettingsPage() {
 
   const user = session.user;
 
-  const membership = await db.familyMember.findFirst({
-    where: { userId: user.id },
-    select: {
-      family: {
-        select: {
-          id: true,
-          name: true,
-          budget: true,
-          members: {
-            select: {
-              id: true,
-              role: true,
-              userId: true,
-              budget: true,
-              user: { select: { id: true, name: true, email: true, avatar: true } },
+  const [membership, { sent: pendingInvitesSent, received: pendingInvitesReceived }] = await Promise.all([
+    db.familyMember.findFirst({
+      where: { userId: user.id },
+      select: {
+        family: {
+          select: {
+            id: true,
+            name: true,
+            budget: true,
+            members: {
+              select: {
+                id: true,
+                role: true,
+                userId: true,
+                budget: true,
+                user: { select: { id: true, name: true, email: true, avatar: true } },
+              },
             },
-          },
-          categories: {
-            select: { id: true, name: true, limitAmount: true },
-            orderBy: { createdAt: "asc" },
-          },
-          cards: {
-            select: { id: true, name: true },
-            orderBy: { createdAt: "asc" },
+            categories: {
+              select: { id: true, name: true, limitAmount: true },
+              orderBy: { createdAt: "asc" },
+            },
+            cards: {
+              select: { id: true, name: true },
+              orderBy: { createdAt: "asc" },
+            },
           },
         },
       },
-    },
-  });
+    }),
+    getPendingInvitesForUser(db, user.id),
+  ]);
 
   return (
     <SettingsClient
@@ -48,6 +52,20 @@ export default async function SettingsPage() {
         avatar: user.avatar,
       }}
       family={membership?.family ?? null}
+      pendingInvitesSent={pendingInvitesSent.map((inv) => ({
+        id: inv.id,
+        inviteeName: inv.invitee.name,
+        inviteeEmail: inv.invitee.email,
+        inviteeAvatar: inv.invitee.avatar,
+        familyName: inv.family.name,
+        createdAt: inv.createdAt,
+      }))}
+      pendingInvitesReceived={pendingInvitesReceived.map((inv) => ({
+        id: inv.id,
+        inviterName: inv.inviter.name,
+        familyName: inv.family.name,
+        createdAt: inv.createdAt,
+      }))}
     />
   );
 }

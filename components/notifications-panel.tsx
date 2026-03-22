@@ -1,29 +1,35 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { CloseIcon, BellIcon, TrashCanIcon } from "./icons";
-import { getNotifications, type Notification } from "@/lib/actions/notifications";
+import { CloseIcon, BellIcon } from "./icons";
+import {
+  getNotifications,
+  dismissNotification,
+  dismissAllNotifications,
+  type Notification,
+} from "@/lib/actions/notifications";
+import { acceptInvite, declineInvite } from "@/lib/actions/settings";
 
-const DISMISSED_KEY = "gastamo_dismissed_notifications";
+const DISMISSED_CAT_KEY = "gastamo_dismissed_cat_alerts";
 
 interface Props {
   open: boolean;
   onClose: () => void;
 }
 
-function getDismissed(): Set<string> {
+function getDismissedCats(): Set<string> {
   if (typeof window === "undefined") return new Set();
   try {
-    const raw = localStorage.getItem(DISMISSED_KEY);
+    const raw = localStorage.getItem(DISMISSED_CAT_KEY);
     return raw ? new Set(JSON.parse(raw)) : new Set();
   } catch {
     return new Set();
   }
 }
 
-function saveDismissed(ids: Set<string>) {
+function saveDismissedCats(ids: Set<string>) {
   try {
-    localStorage.setItem(DISMISSED_KEY, JSON.stringify(Array.from(ids)));
+    localStorage.setItem(DISMISSED_CAT_KEY, JSON.stringify(Array.from(ids)));
   } catch {}
 }
 
@@ -33,83 +39,90 @@ function timeAgo(date: Date): string {
   const mins = Math.floor(diff / 60000);
   const hours = Math.floor(diff / 3600000);
   const days = Math.floor(diff / 86400000);
-
   if (mins < 1) return "agora";
   if (mins < 60) return `${mins}m atrás`;
   if (hours < 24) return `${hours}h atrás`;
   return `${days}d atrás`;
 }
 
-function Avatar({ name, avatar }: { name?: string; avatar?: string | null }) {
-  if (avatar) {
-    return (
-      <img
-        src={avatar}
-        alt={name}
-        style={{ width: 32, height: 32, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }}
-      />
-    );
-  }
-  const initials = name
-    ? name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase()
-    : "?";
+function NotificationIcon({ type }: { type: Notification["type"] }) {
+  const colors: Record<string, { bg: string; dot: string }> = {
+    invite: { bg: "#EFF6FF", dot: "#3B82F6" },
+    invite_accepted: { bg: "#F0FAF5", dot: "#0F8F4E" },
+    invite_declined: { bg: "#FEF2F2", dot: "#DC2626" },
+    expense_added: { bg: "#F0FAF5", dot: "#1AAD63" },
+    expense_deleted: { bg: "#FEF2F2", dot: "#F97316" },
+    removed_from_family: { bg: "#FEF2F2", dot: "#DC2626" },
+    weekly_report: { bg: "#F5F3FF", dot: "#7C3AED" },
+    category_alert: { bg: "#FFF7ED", dot: "#F97316" },
+  };
+  const { bg, dot } = colors[type] ?? { bg: "#F5F5F5", dot: "#A3A3A3" };
   return (
-    <div
-      style={{
-        width: 32, height: 32, borderRadius: "50%",
-        background: "var(--color-bg-brand-accent)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 12, fontWeight: 600, color: "var(--color-fg-inverse)", flexShrink: 0,
-      }}
-    >
-      {initials}
-    </div>
-  );
-}
-
-function AlertDot({ type }: { type: Notification["type"] }) {
-  const bg = type === "category_alert" ? "#f97316" : "var(--color-bg-brand-default)";
-  return (
-    <div
-      style={{
-        width: 32, height: 32, borderRadius: "50%",
-        background: `${bg}20`,
-        display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-      }}
-    >
-      <div style={{ width: 10, height: 10, borderRadius: "50%", background: bg }} />
+    <div style={{
+      width: 36, height: 36, borderRadius: "50%", background: bg,
+      display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+    }}>
+      <div style={{ width: 10, height: 10, borderRadius: "50%", background: dot }} />
     </div>
   );
 }
 
 export function NotificationsPanel({ open, onClose }: Props) {
   const [allNotifications, setAllNotifications] = useState<Notification[]>([]);
-  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const [dismissedCats, setDismissedCats] = useState<Set<string>>(new Set());
   const [isPending, startTransition] = useTransition();
+  const [respondingTo, setRespondingTo] = useState<string | null>(null);
+
+  const load = () => {
+    startTransition(async () => {
+      const data = await getNotifications();
+      setAllNotifications(data);
+    });
+  };
 
   useEffect(() => {
     if (open) {
-      setDismissed(getDismissed());
-      startTransition(async () => {
-        const data = await getNotifications();
-        setAllNotifications(data);
-      });
+      setDismissedCats(getDismissedCats());
+      load();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const visible = allNotifications.filter((n) => !dismissed.has(n.id));
+  const visible = allNotifications.filter((n) =>
+    n.type === "category_alert" ? !dismissedCats.has(n.id) : true
+  );
 
-  const dismiss = (id: string) => {
-    const next = new Set(dismissed);
-    next.add(id);
-    setDismissed(next);
-    saveDismissed(next);
+  const dismiss = async (n: Notification) => {
+    if (n.type === "category_alert") {
+      const next = new Set(dismissedCats);
+      next.add(n.id);
+      setDismissedCats(next);
+      saveDismissedCats(next);
+    } else {
+      setAllNotifications((prev) => prev.filter((x) => x.id !== n.id));
+      await dismissNotification(n.id);
+    }
   };
 
-  const dismissAll = () => {
-    const next = new Set(allNotifications.map((n) => n.id));
-    setDismissed(next);
-    saveDismissed(next);
+  const dismissAll = async () => {
+    const catIds = new Set(allNotifications.filter((n) => n.type === "category_alert").map((n) => n.id));
+    setDismissedCats(catIds);
+    saveDismissedCats(catIds);
+    setAllNotifications([]);
+    await dismissAllNotifications();
+  };
+
+  const handleInvite = async (n: Notification, action: "accept" | "decline") => {
+    const inviteId = n.metadata?.inviteId;
+    if (!inviteId) return;
+    setRespondingTo(n.id);
+    if (action === "accept") {
+      await acceptInvite(inviteId);
+    } else {
+      await declineInvite(inviteId);
+    }
+    setRespondingTo(null);
+    load();
   };
 
   if (!open) return null;
@@ -127,7 +140,7 @@ export function NotificationsPanel({ open, onClose }: Props) {
           top: 0,
           left: 80,
           bottom: 0,
-          width: 360,
+          width: 380,
           zIndex: 50,
           display: "flex",
           flexDirection: "column",
@@ -168,7 +181,6 @@ export function NotificationsPanel({ open, onClose }: Props) {
               <button
                 type="button"
                 onClick={dismissAll}
-                title="Limpar todas"
                 style={{
                   height: 32, padding: "0 12px",
                   background: "var(--color-bg-subtle)",
@@ -200,7 +212,7 @@ export function NotificationsPanel({ open, onClose }: Props) {
         </div>
 
         {/* Content */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "var(--space-16) var(--space-24) var(--space-32)" }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: "var(--space-16) var(--space-16) var(--space-32)" }}>
           {isPending ? (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 200, color: "var(--color-fg-muted)", fontSize: 14 }}>
               Carregando...
@@ -213,47 +225,81 @@ export function NotificationsPanel({ open, onClose }: Props) {
               </span>
             </div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               {visible.map((n) => (
                 <div
                   key={n.id}
                   style={{
-                    display: "flex", alignItems: "flex-start", gap: "var(--space-12)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
                     padding: "var(--space-12)",
                     borderRadius: "var(--radius-xl)",
-                    background: "var(--color-bg-subtle)",
+                    background: n.type === "invite" ? "#EFF6FF" : "var(--color-bg-subtle)",
+                    border: n.type === "invite" ? "1px solid #BFDBFE" : "none",
                   }}
                 >
-                  {n.type === "expense" ? (
-                    <Avatar name={n.memberName} avatar={n.memberAvatar} />
-                  ) : (
-                    <AlertDot type={n.type} />
-                  )}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-fg-default)", lineHeight: 1.4, marginBottom: 2 }}>
-                      {n.title}
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: "var(--space-12)" }}>
+                    <NotificationIcon type={n.type} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-fg-default)", lineHeight: 1.4, marginBottom: 2 }}>
+                        {n.title}
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--color-fg-muted)", lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {n.description}
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--color-fg-subtle)", marginTop: 4 }}>
+                        {timeAgo(n.createdAt)}
+                      </div>
                     </div>
-                    <div style={{ fontSize: 12, color: "var(--color-fg-muted)", lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {n.description}
-                    </div>
-                    <div style={{ fontSize: 11, color: "var(--color-fg-subtle)", marginTop: 4 }}>
-                      {timeAgo(n.createdAt)}
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => dismiss(n)}
+                      style={{
+                        width: 24, height: 24, border: "none", background: "transparent",
+                        cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                        flexShrink: 0, opacity: 0.4, borderRadius: "var(--radius-lg)",
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
+                      onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.4")}
+                    >
+                      <CloseIcon size={12} color="var(--color-fg-muted)" />
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => dismiss(n.id)}
-                    title="Remover"
-                    style={{
-                      width: 24, height: 24, border: "none", background: "transparent",
-                      cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-                      flexShrink: 0, opacity: 0.4, borderRadius: "var(--radius-lg)",
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
-                    onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.4")}
-                  >
-                    <CloseIcon size={12} color="var(--color-fg-muted)" />
-                  </button>
+
+                  {/* Invite action buttons */}
+                  {n.type === "invite" && n.metadata?.inviteId && (
+                    <div style={{ display: "flex", gap: 8, paddingLeft: 48 }}>
+                      <button
+                        type="button"
+                        disabled={respondingTo === n.id}
+                        onClick={() => handleInvite(n, "decline")}
+                        style={{
+                          flex: 1, padding: "6px 0", borderRadius: 8,
+                          border: "1px solid #BFDBFE", background: "#FFFFFF",
+                          fontSize: 12, fontWeight: 600, color: "#1D4ED8",
+                          cursor: "pointer", fontFamily: "inherit",
+                          opacity: respondingTo === n.id ? 0.6 : 1,
+                        }}
+                      >
+                        Recusar
+                      </button>
+                      <button
+                        type="button"
+                        disabled={respondingTo === n.id}
+                        onClick={() => handleInvite(n, "accept")}
+                        style={{
+                          flex: 1, padding: "6px 0", borderRadius: 8,
+                          border: "none", background: "#2563EB",
+                          fontSize: 12, fontWeight: 600, color: "#FFFFFF",
+                          cursor: "pointer", fontFamily: "inherit",
+                          opacity: respondingTo === n.id ? 0.6 : 1,
+                        }}
+                      >
+                        {respondingTo === n.id ? "..." : "Aceitar"}
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

@@ -143,26 +143,188 @@ export async function inviteMember(prevState: ActionResult, formData: FormData):
   if (budget < 0) return { error: "Orçamento do integrante inválido" };
 
   try {
-    const member = await db.familyMember.findFirst({ where: { userId: session.userId } });
-    if (!member) return { error: "Família não encontrada" };
+    const myMember = await db.familyMember.findFirst({
+      where: { userId: session.userId },
+      include: { family: { select: { id: true, name: true } } },
+    });
+    if (!myMember) return { error: "Família não encontrada" };
 
     const userToInvite = await db.user.findUnique({ where: { email } });
     if (!userToInvite) return { error: "Usuário não encontrado na plataforma" };
 
-    const existing = await db.familyMember.findFirst({
-      where: { userId: userToInvite.id, familyId: member.familyId },
-    });
-    if (existing) return { error: "Usuário já é membro desta família" };
+    if (userToInvite.id === session.userId) return { error: "Você não pode convidar a si mesmo" };
 
+    const existingMember = await db.familyMember.findFirst({
+      where: { userId: userToInvite.id, familyId: myMember.familyId },
+    });
+    if (existingMember) return { error: "Usuário já é membro desta família" };
+
+    const existingInvite = await db.familyInvite.findFirst({
+      where: { familyId: myMember.familyId, inviteeId: userToInvite.id, status: "pending" },
+    });
+    if (existingInvite) return { error: "Convite já enviado para este usuário" };
+
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7);
+
+    const invite = await db.familyInvite.create({
+      data: {
+        familyId: myMember.familyId,
+        inviterId: session.userId,
+        inviteeId: userToInvite.id,
+        budget,
+        expiresAt,
+      },
+    });
+
+    // Notificação in-app (não bloqueia o convite se falhar — ex.: tabela ausente no banco)
+    try {
+      await db.notification.create({
+        data: {
+          userId: userToInvite.id,
+          type: "invite",
+          title: `${session.user.name} te convidou para a família`,
+          description: `Você recebeu um convite para entrar em "${myMember.family.name}".`,
+          metadata: JSON.stringify({
+            inviteId: invite.id,
+            familyName: myMember.family.name,
+            inviterName: session.user.name,
+          }),
+        },
+      });
+    } catch (notifyErr) {
+      console.error("[inviteMember] convite criado, mas falha ao criar notificação:", notifyErr);
+    }
+
+    revalidatePath("/settings");
+    return { success: `Convite enviado para ${userToInvite.name}` };
+  } catch (e) {
+    console.error("[inviteMember]", e);
+    const hint = e instanceof Error ? e.message : String(e);
+    const devDetail =
+      process.env.NODE_ENV === "development"
+        ? ` (${hint.slice(0, 280)})`
+        : "";
+    if (
+      hint.includes("does not exist") ||
+      hint.includes("Unknown table") ||
+      hint.includes("Unknown arg") ||
+      hint.includes("undefined (reading 'findFirst')") ||
+      hint.includes("undefined (reading 'findMany')") ||
+      hint.includes("undefined (reading 'create')")
+    ) {
+      return {
+        error: `Banco ou Prisma Client desatualizado. Rode \`npx prisma generate\` e \`npx prisma db push\` (ou migrate) e reinicie o servidor.${devDetail}`,
+      };
+    }
+    return { error: `Erro ao enviar convite.${devDetail}` };
+  }
+}
+
+export async function acceptInvite(inviteId: string): Promise<ActionResult> {
+  const session = await getSession();
+  if (!session) return { error: "Não autorizado" };
+
+  try {
+    const invite = await db.familyInvite.findUnique({
+      where: { id: inviteId },
+      include: { family: { select: { id: true, name: true } }, inviter: { select: { id: true, name: true } } },
+    });
+
+    if (!invite) return { error: "Convite não encontrado" };
+    if (invite.inviteeId !== session.userId) return { error: "Convite não é para você" };
+    if (invite.status !== "pending") return { error: "Convite já foi respondido" };
+    if (invite.expiresAt < new Date()) return { error: "Convite expirado" };
+
+    // Check if already a member
+    const existingMember = await db.familyMember.findFirst({
+      where: { userId: session.userId, familyId: invite.familyId },
+    });
+    if (existingMember) {
+      await db.familyInvite.update({ where: { id: inviteId }, data: { status: "accepted" } });
+      return { success: "Você já era membro desta família" };
+    }
+
+    // If user has a solo self-family, remove them from it so they join the invited family
+    const currentMembership = await db.familyMember.findFirst({
+      where: { userId: session.userId },
+      include: { family: { include: { members: true } } },
+    });
+    if (currentMembership && currentMembership.family.members.length === 1) {
+      await db.family.delete({ where: { id: currentMembership.familyId } });
+    }
+
+    // Accept invite
+    await db.familyInvite.update({ where: { id: inviteId }, data: { status: "accepted" } });
     await db.familyMember.create({
-      data: { userId: userToInvite.id, familyId: member.familyId, role: "member", budget },
+      data: {
+        userId: session.userId,
+        familyId: invite.familyId,
+        role: "member",
+        budget: invite.budget,
+      },
+    });
+
+    // Mark the invite notification as read
+    await db.notification.updateMany({
+      where: { userId: session.userId, type: "invite", metadata: { contains: inviteId } },
+      data: { read: true },
+    });
+
+    // Notify the inviter
+    await db.notification.create({
+      data: {
+        userId: invite.inviterId,
+        type: "invite_accepted",
+        title: `${session.user.name} aceitou seu convite`,
+        description: `${session.user.name} entrou em "${invite.family.name}".`,
+      },
+    });
+
+    revalidatePath("/");
+    revalidatePath("/settings");
+    return { success: `Você entrou em "${invite.family.name}"` };
+  } catch {
+    return { error: "Erro ao aceitar convite" };
+  }
+}
+
+export async function declineInvite(inviteId: string): Promise<ActionResult> {
+  const session = await getSession();
+  if (!session) return { error: "Não autorizado" };
+
+  try {
+    const invite = await db.familyInvite.findUnique({
+      where: { id: inviteId },
+      include: { family: { select: { name: true } }, inviter: { select: { id: true, name: true } } },
+    });
+
+    if (!invite) return { error: "Convite não encontrado" };
+    if (invite.inviteeId !== session.userId) return { error: "Convite não é para você" };
+    if (invite.status !== "pending") return { error: "Convite já foi respondido" };
+
+    await db.familyInvite.update({ where: { id: inviteId }, data: { status: "declined" } });
+
+    // Mark the invite notification as read
+    await db.notification.updateMany({
+      where: { userId: session.userId, type: "invite", metadata: { contains: inviteId } },
+      data: { read: true },
+    });
+
+    // Notify the inviter
+    await db.notification.create({
+      data: {
+        userId: invite.inviterId,
+        type: "invite_declined",
+        title: `${session.user.name} recusou seu convite`,
+        description: `${session.user.name} não aceitou o convite para "${invite.family.name}".`,
+      },
     });
 
     revalidatePath("/settings");
-    revalidatePath("/");
-    return { success: `${userToInvite.name} foi adicionado à família` };
+    return { success: "Convite recusado" };
   } catch {
-    return { error: "Erro ao convidar integrante" };
+    return { error: "Erro ao recusar convite" };
   }
 }
 
@@ -298,16 +460,29 @@ export async function removeFamilyMember(memberId: string): Promise<ActionResult
     });
     if (!myMember) return { error: "Família não encontrada" };
 
-    if (myMember.role !== "admin") return { error: "Apenas administradores podem remover integrantes" };
+    if (myMember.role !== "owner" && myMember.role !== "admin") {
+      return { error: "Apenas o dono ou administradores podem remover integrantes" };
+    }
     if (myMember.id === memberId) return { error: "Você não pode remover a si mesmo" };
 
     const target = await db.familyMember.findFirst({
       where: { id: memberId, familyId: myMember.familyId },
-      select: { id: true },
+      include: { user: { select: { id: true, name: true } } },
     });
     if (!target) return { error: "Integrante não encontrado" };
 
     await db.familyMember.delete({ where: { id: memberId } });
+
+    // Notify the removed member
+    const family = await db.family.findUnique({ where: { id: myMember.familyId }, select: { name: true } });
+    await db.notification.create({
+      data: {
+        userId: target.user.id,
+        type: "removed_from_family",
+        title: "Você foi removido da família",
+        description: `${session.user.name} removeu você de "${family?.name ?? "Família"}".`,
+      },
+    });
 
     revalidatePath("/settings");
     revalidatePath("/");

@@ -5,6 +5,11 @@ import { db } from "./db";
 const SESSION_COOKIE = "gastamo_session";
 const SESSION_DAYS = 30;
 
+/**
+ * Só leitura de cookies — nunca chame .set/.delete aqui: em RSC isso quebra com
+ * "Cookies can only be modified in a Server Action or Route Handler".
+ * Cookie inválido: redirecione para `/api/auth/signout-expired`.
+ */
 async function _getSession() {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;

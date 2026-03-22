@@ -1,10 +1,10 @@
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
 const SESSION_COOKIE = "gastamo_session";
 
+/** Limpa cookie de sessão inválida/expirada. Só em Route Handler (não em Server Components). */
 export async function GET(request: Request) {
-  const cookieStore = await cookies();
-  cookieStore.delete(SESSION_COOKIE);
-  return NextResponse.redirect(new URL("/login", request.url));
+  const res = NextResponse.redirect(new URL("/login", request.url));
+  res.cookies.delete(SESSION_COOKIE);
+  return res;
 }

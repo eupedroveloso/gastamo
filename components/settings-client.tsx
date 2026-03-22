@@ -7,6 +7,8 @@ import {
   updateFamilyBudget,
   updateMemberBudget,
   inviteMember,
+  acceptInvite,
+  declineInvite,
   createCategory,
   deleteCategory,
   updateCategoryLimit,
@@ -72,9 +74,27 @@ interface Family {
   cards: Card[];
 }
 
+interface PendingInviteSent {
+  id: string;
+  inviteeName: string;
+  inviteeEmail: string;
+  inviteeAvatar?: string | null;
+  familyName: string;
+  createdAt: Date;
+}
+
+interface PendingInviteReceived {
+  id: string;
+  inviterName: string;
+  familyName: string;
+  createdAt: Date;
+}
+
 interface SettingsClientProps {
   user: User;
   family: Family | null;
+  pendingInvitesSent: PendingInviteSent[];
+  pendingInvitesReceived: PendingInviteReceived[];
 }
 
 const inputStyle: React.CSSProperties = {
@@ -246,7 +266,7 @@ function DeleteAccountButton() {
   );
 }
 
-export function SettingsClient({ user, family }: SettingsClientProps) {
+export function SettingsClient({ user, family, pendingInvitesSent, pendingInvitesReceived }: SettingsClientProps) {
   const [activeTab, setActiveTab] = useState<Tab>("profile");
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
@@ -263,6 +283,8 @@ export function SettingsClient({ user, family }: SettingsClientProps) {
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
   const [isRemoving, startRemove] = useTransition();
+  const [inviteResponding, setInviteResponding] = useState<string | null>(null);
+  const [inviteResponseMsg, setInviteResponseMsg] = useState<string | null>(null);
   const [categoryState, categoryAction, categoryPending] = useActionState(createCategory, null);
   const [categoryLimitState, categoryLimitAction, categoryLimitPending] = useActionState(updateCategoryLimit, null);
   const [cardState, cardAction, cardPending] = useActionState(createCard, null);
@@ -647,6 +669,105 @@ export function SettingsClient({ user, family }: SettingsClientProps) {
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <p style={sectionTitleStyle}>Família atual</p>
 
+              {/* Convites recebidos: sempre visíveis (antes só apareciam sem família — quem já tem família solo nunca via) */}
+              {pendingInvitesReceived.length > 0 && (
+                <>
+                  <p style={sectionTitleStyle}>Convites recebidos</p>
+                  {inviteResponseMsg && (
+                    <p style={{ fontSize: 13, color: "#0F8F4E", margin: "0 0 8px" }}>{inviteResponseMsg}</p>
+                  )}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    {pendingInvitesReceived.map((inv) => (
+                      <div
+                        key={inv.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 12,
+                          padding: "16px",
+                          border: "1px solid #E5E5E5",
+                          borderRadius: 16,
+                          background: "#FAFAFA",
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: 40,
+                            height: 40,
+                            borderRadius: 10,
+                            background: "#F0FAF5",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            flexShrink: 0,
+                          }}
+                        >
+                          <UsersIcon size={18} color="#0F8F4E" />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: "#0A0A0A" }}>
+                            {inv.inviterName} te convidou
+                          </span>
+                          <span style={{ fontSize: 12, color: "#525252", display: "block" }}>
+                            Entrar em &quot;{inv.familyName}&quot;
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button
+                            type="button"
+                            disabled={inviteResponding === inv.id}
+                            onClick={async () => {
+                              setInviteResponding(inv.id);
+                              const r = await declineInvite(inv.id);
+                              setInviteResponding(null);
+                              setInviteResponseMsg(r?.error ?? r?.success ?? null);
+                            }}
+                            style={{
+                              padding: "6px 14px",
+                              borderRadius: 8,
+                              border: "1px solid #E5E5E5",
+                              background: "#FFF",
+                              fontSize: 13,
+                              fontWeight: 600,
+                              color: "#525252",
+                              cursor: "pointer",
+                              fontFamily: "inherit",
+                            }}
+                          >
+                            Recusar
+                          </button>
+                          <button
+                            type="button"
+                            disabled={inviteResponding === inv.id}
+                            onClick={async () => {
+                              setInviteResponding(inv.id);
+                              const r = await acceptInvite(inv.id);
+                              setInviteResponding(null);
+                              setInviteResponseMsg(r?.error ?? r?.success ?? null);
+                            }}
+                            style={{
+                              padding: "6px 14px",
+                              borderRadius: 8,
+                              border: "none",
+                              background: "#0F8F4E",
+                              fontSize: 13,
+                              fontWeight: 600,
+                              color: "#FFF",
+                              cursor: "pointer",
+                              fontFamily: "inherit",
+                              opacity: inviteResponding === inv.id ? 0.6 : 1,
+                            }}
+                          >
+                            {inviteResponding === inv.id ? "..." : "Aceitar"}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={dividerStyle} />
+                </>
+              )}
+
               {family ? (
                 <>
                   {/* Family card */}
@@ -816,7 +937,7 @@ export function SettingsClient({ user, family }: SettingsClientProps) {
                   <div style={{ display: "flex", flexDirection: "column" }}>
                     {(() => {
                       const myMember = family.members.find((m) => m.userId === user.id);
-                      const iAmAdmin = myMember?.role === "admin";
+                      const iAmAdmin = myMember?.role === "owner" || myMember?.role === "admin";
                       return family.members.map((member) => {
                         const memberInitials = member.user.name
                           .split(" ")
@@ -824,7 +945,7 @@ export function SettingsClient({ user, family }: SettingsClientProps) {
                           .join("")
                           .toUpperCase()
                           .slice(0, 2);
-                        const isAdmin = member.role === "admin";
+                        const isAdmin = member.role === "owner" || member.role === "admin";
                         const isMe = member.userId === user.id;
                         const isConfirming = confirmRemoveId === member.id;
 
@@ -1052,7 +1173,8 @@ export function SettingsClient({ user, family }: SettingsClientProps) {
                     <div>
                       <p style={sectionTitleStyle}>Convidar integrante</p>
                       <p style={{ fontSize: 12, color: "#525252", margin: "4px 0 0", letterSpacing: "0.02em" }}>
-                        O usuário precisa estar cadastrado na plataforma para receber o convite.
+                        O e-mail deve ser de alguém que já tem conta no Gastamo. O convite aparece nas notificações do app
+                        (não enviamos e-mail).
                       </p>
                     </div>
                     <form action={inviteAction} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -1108,9 +1230,59 @@ export function SettingsClient({ user, family }: SettingsClientProps) {
                       <p style={{ color: "#0F8F4E", fontSize: 13, margin: 0 }}>{inviteState.success}</p>
                     )}
                   </div>
+
+                  {/* Pending invites sent */}
+                  {pendingInvitesSent.length > 0 && (
+                    <>
+                      <div style={dividerStyle} />
+                      <p style={sectionTitleStyle}>Convites enviados</p>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        {pendingInvitesSent.map((inv) => {
+                          const initials = inv.inviteeName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
+                          return (
+                            <div
+                              key={inv.id}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 12,
+                                padding: "12px 16px",
+                                border: "1px solid #F5F5F5",
+                                borderRadius: 12,
+                              }}
+                            >
+                              <div style={{
+                                width: 36, height: 36, borderRadius: "50%", background: "#F0FAF5",
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                fontSize: 12, fontWeight: 700, color: "#0F8F4E", flexShrink: 0, overflow: "hidden",
+                              }}>
+                                {inv.inviteeAvatar
+                                  ? <img src={inv.inviteeAvatar} alt={inv.inviteeName} style={{ width: 36, height: 36, objectFit: "cover" }} />
+                                  : initials}
+                              </div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <span style={{ fontSize: 13, fontWeight: 600, color: "#0A0A0A" }}>{inv.inviteeName}</span>
+                                <span style={{ fontSize: 12, color: "#525252", display: "block", letterSpacing: "0.02em" }}>{inv.inviteeEmail}</span>
+                              </div>
+                              <span style={{
+                                fontSize: 11, fontWeight: 600, color: "#D97706", background: "#FEF3C7",
+                                padding: "3px 10px", borderRadius: 99,
+                              }}>
+                                Pendente
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
                 </>
               ) : (
-                <p style={{ fontSize: 14, color: "#525252" }}>Você não pertence a nenhuma família.</p>
+                <p style={{ fontSize: 14, color: "#525252" }}>
+                  {pendingInvitesReceived.length > 0
+                    ? "Você ainda não está em uma família. Aceite um convite acima para entrar."
+                    : "Você não pertence a nenhuma família."}
+                </p>
               )}
             </div>
           )}

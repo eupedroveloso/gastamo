@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
-import { getTransactionsData } from "@/lib/actions/expenses";
+import { getTransactionsData } from "@/lib/data/transactions";
 import { TransactionsClient } from "@/components/transactions-client";
 
 export default async function TransactionsPage() {
