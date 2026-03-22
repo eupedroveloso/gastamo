@@ -1,9 +1,11 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
-import { ChevronDownIcon, CloseIcon } from "./icons";
+import type { CSSProperties } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
+import { ChevronDownIcon, CloseIcon, PlusIcon } from "./icons";
 import { Calendar } from "./calendar";
 import { createExpense } from "@/lib/actions/expenses";
+import { createCardQuick, createCategoryQuick } from "@/lib/actions/quick-create";
 
 interface Props {
   open: boolean;
@@ -81,10 +83,60 @@ const inputStyle = {
   color: "var(--color-fg-default)",
 } as const;
 
+const linkBtnStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 4,
+  padding: 0,
+  border: "none",
+  background: "none",
+  cursor: "pointer",
+  fontFamily: "inherit",
+  fontSize: 11,
+  fontWeight: 600,
+  color: "var(--color-bg-brand-default)",
+  letterSpacing: "0.2px",
+};
+
 export function AddExpensePanel({ open, onClose, categories, cards, members }: Props) {
   const [state, formAction, isPending] = useActionState(createExpense, null);
   const [selectedType, setSelectedType] = useState("avulsa");
   const [selectedDate, setSelectedDate] = useState("");
+  const [localCategories, setLocalCategories] = useState(categories);
+  const [localCards, setLocalCards] = useState(cards);
+  const [categoryId, setCategoryId] = useState("");
+  const [cardId, setCardId] = useState("");
+  const [responsibleId, setResponsibleId] = useState("");
+  const [showNewCategory, setShowNewCategory] = useState(false);
+  const [showNewCard, setShowNewCard] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCardName, setNewCardName] = useState("");
+  const [newCategoryErr, setNewCategoryErr] = useState<string | null>(null);
+  const [newCardErr, setNewCardErr] = useState<string | null>(null);
+  const [creatingCategory, setCreatingCategory] = useState(false);
+  const [creatingCard, setCreatingCard] = useState(false);
+  const wasOpen = useRef(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setLocalCategories(categories);
+    setLocalCards(cards);
+  }, [open, categories, cards]);
+
+  useEffect(() => {
+    if (open && !wasOpen.current) {
+      setCategoryId("");
+      setCardId("");
+      setResponsibleId("");
+      setShowNewCategory(false);
+      setShowNewCard(false);
+      setNewCategoryName("");
+      setNewCardName("");
+      setNewCategoryErr(null);
+      setNewCardErr(null);
+    }
+    wasOpen.current = open;
+  }, [open]);
 
   useEffect(() => {
     if (state?.success) {
@@ -263,15 +315,87 @@ export function AddExpensePanel({ open, onClose, categories, cards, members }: P
                 <div style={fieldStyle}>
                   <select
                     name="categoryId"
-                    defaultValue=""
+                    value={categoryId}
+                    onChange={(e) => setCategoryId(e.target.value)}
                     style={{ ...inputStyle, color: "var(--color-fg-subtle)", cursor: "pointer" }}
                   >
-                    <option value="">Selecione uma Categoria</option>
-                    {categories.map((c) => (
+                    <option value="">Selecione uma Categoria (opcional)</option>
+                    {localCategories.map((c) => (
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>
                   <ChevronDownIcon size={16} color="var(--color-fg-subtle)" />
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowNewCategory((v) => !v);
+                      setNewCategoryErr(null);
+                    }}
+                    style={linkBtnStyle}
+                  >
+                    <PlusIcon size={12} color="var(--color-bg-brand-default)" />
+                    {showNewCategory ? "Fechar" : "Nova categoria"}
+                  </button>
+                  {showNewCategory && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                      <input
+                        type="text"
+                        value={newCategoryName}
+                        onChange={(e) => setNewCategoryName(e.target.value)}
+                        placeholder="Nome da categoria"
+                        disabled={creatingCategory}
+                        style={{
+                          ...inputStyle,
+                          flex: 1,
+                          minWidth: 140,
+                          padding: "8px 10px",
+                          border: "var(--border-sm) solid var(--color-border-default)",
+                          borderRadius: "var(--radius-lg)",
+                          background: "var(--color-bg-subtle)",
+                        }}
+                      />
+                      <button
+                        type="button"
+                        disabled={creatingCategory || !newCategoryName.trim()}
+                        onClick={async () => {
+                          setNewCategoryErr(null);
+                          setCreatingCategory(true);
+                          const res = await createCategoryQuick(newCategoryName);
+                          setCreatingCategory(false);
+                          if ("error" in res) {
+                            setNewCategoryErr(res.error);
+                            return;
+                          }
+                          setLocalCategories((prev) => {
+                            if (prev.some((x) => x.id === res.id)) return prev;
+                            return [...prev, { id: res.id, name: res.name }];
+                          });
+                          setCategoryId(res.id);
+                          setNewCategoryName("");
+                          setShowNewCategory(false);
+                        }}
+                        style={{
+                          padding: "8px 14px",
+                          borderRadius: "var(--radius-lg)",
+                          border: "none",
+                          background: "var(--color-bg-brand-default)",
+                          color: "var(--color-fg-inverse)",
+                          fontWeight: 600,
+                          fontSize: 12,
+                          cursor: creatingCategory || !newCategoryName.trim() ? "not-allowed" : "pointer",
+                          fontFamily: "inherit",
+                          opacity: creatingCategory || !newCategoryName.trim() ? 0.6 : 1,
+                        }}
+                      >
+                        {creatingCategory ? "…" : "Criar"}
+                      </button>
+                    </div>
+                  )}
+                  {newCategoryErr && (
+                    <span style={{ fontSize: 11, color: "#f87171" }}>{newCategoryErr}</span>
+                  )}
                 </div>
               </FormField>
 
@@ -279,7 +403,8 @@ export function AddExpensePanel({ open, onClose, categories, cards, members }: P
                 <div style={fieldStyle}>
                   <select
                     name="responsibleId"
-                    defaultValue=""
+                    value={responsibleId}
+                    onChange={(e) => setResponsibleId(e.target.value)}
                     required
                     style={{ ...inputStyle, color: "var(--color-fg-subtle)", cursor: "pointer" }}
                   >
@@ -296,15 +421,87 @@ export function AddExpensePanel({ open, onClose, categories, cards, members }: P
                 <div style={fieldStyle}>
                   <select
                     name="cardId"
-                    defaultValue=""
+                    value={cardId}
+                    onChange={(e) => setCardId(e.target.value)}
                     style={{ ...inputStyle, color: "var(--color-fg-subtle)", cursor: "pointer" }}
                   >
-                    <option value="">Selecione o Cartão</option>
-                    {cards.map((c) => (
+                    <option value="">Selecione o Cartão (opcional)</option>
+                    {localCards.map((c) => (
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>
                   <ChevronDownIcon size={16} color="var(--color-fg-subtle)" />
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowNewCard((v) => !v);
+                      setNewCardErr(null);
+                    }}
+                    style={linkBtnStyle}
+                  >
+                    <PlusIcon size={12} color="var(--color-bg-brand-default)" />
+                    {showNewCard ? "Fechar" : "Novo cartão"}
+                  </button>
+                  {showNewCard && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                      <input
+                        type="text"
+                        value={newCardName}
+                        onChange={(e) => setNewCardName(e.target.value)}
+                        placeholder="Ex: Nubank, débito…"
+                        disabled={creatingCard}
+                        style={{
+                          ...inputStyle,
+                          flex: 1,
+                          minWidth: 140,
+                          padding: "8px 10px",
+                          border: "var(--border-sm) solid var(--color-border-default)",
+                          borderRadius: "var(--radius-lg)",
+                          background: "var(--color-bg-subtle)",
+                        }}
+                      />
+                      <button
+                        type="button"
+                        disabled={creatingCard || !newCardName.trim()}
+                        onClick={async () => {
+                          setNewCardErr(null);
+                          setCreatingCard(true);
+                          const res = await createCardQuick(newCardName);
+                          setCreatingCard(false);
+                          if ("error" in res) {
+                            setNewCardErr(res.error);
+                            return;
+                          }
+                          setLocalCards((prev) => {
+                            if (prev.some((x) => x.id === res.id)) return prev;
+                            return [...prev, { id: res.id, name: res.name }];
+                          });
+                          setCardId(res.id);
+                          setNewCardName("");
+                          setShowNewCard(false);
+                        }}
+                        style={{
+                          padding: "8px 14px",
+                          borderRadius: "var(--radius-lg)",
+                          border: "none",
+                          background: "var(--color-bg-brand-default)",
+                          color: "var(--color-fg-inverse)",
+                          fontWeight: 600,
+                          fontSize: 12,
+                          cursor: creatingCard || !newCardName.trim() ? "not-allowed" : "pointer",
+                          fontFamily: "inherit",
+                          opacity: creatingCard || !newCardName.trim() ? 0.6 : 1,
+                        }}
+                      >
+                        {creatingCard ? "…" : "Criar"}
+                      </button>
+                    </div>
+                  )}
+                  {newCardErr && (
+                    <span style={{ fontSize: 11, color: "#f87171" }}>{newCardErr}</span>
+                  )}
                 </div>
               </FormField>
             </div>
