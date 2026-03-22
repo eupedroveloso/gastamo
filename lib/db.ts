@@ -1,8 +1,24 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
+/** Evita aviso do pg-connection-string: require/prefer/verify-ca viram verify-full de forma explícita. */
+function normalizePgSslMode(url: string): string {
+  try {
+    const u = new URL(url);
+    const mode = u.searchParams.get("sslmode")?.toLowerCase();
+    if (mode === "prefer" || mode === "require" || mode === "verify-ca") {
+      u.searchParams.set("sslmode", "verify-full");
+      return u.toString();
+    }
+    return url;
+  } catch {
+    return url;
+  }
+}
+
 function createPrismaClient() {
-  const url = process.env.DATABASE_URL as string;
+  const raw = process.env.DATABASE_URL as string;
+  const url = normalizePgSslMode(raw);
   const adapter = new PrismaPg({ connectionString: url });
 
   return new PrismaClient({

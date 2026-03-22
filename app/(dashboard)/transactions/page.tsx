@@ -5,10 +5,10 @@ import { TransactionsClient } from "@/components/transactions-client";
 
 export default async function TransactionsPage() {
   const session = await getSession();
-  if (!session) redirect("/login");
+  if (!session) redirect("/api/auth/signout-expired");
 
   const data = await getTransactionsData();
-  if (!data) redirect("/login");
+  if (!data) redirect("/api/auth/signout-expired");
 
   return (
     <TransactionsClient

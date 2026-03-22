@@ -33,7 +33,20 @@ export async function getDashboardData() {
   });
 
   if (!familyMember) {
-    return { user, family: null, expenses: [], totalSpent: 0, categories: [], cards: [], memberSpending: [], typeStats: { avulsa: 0, fixa: 0, parcelada: 0 } };
+    const now = new Date();
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    const daysInMonth = endOfMonth.getDate();
+    return {
+      user,
+      family: null,
+      expenses: [],
+      totalSpent: 0,
+      daysInMonth,
+      categories: [],
+      cards: [],
+      memberSpending: [],
+      typeStats: { avulsa: 0, fixa: 0, parcelada: 0 },
+    };
   }
 
   const family = familyMember.family;

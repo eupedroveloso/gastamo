@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { getDashboardData } from "@/lib/actions/dashboard";
 import { DonutChart } from "@/components/donut-chart";
 import { ExpenseButtonPanel } from "@/components/expense-button-panel";
@@ -54,7 +55,7 @@ function AvatarStack({ members }: { members: { name: string; avatar?: string | n
 export default async function DashboardPage() {
   const data = await getDashboardData();
 
-  if (!data) return null;
+  if (!data) redirect("/api/auth/signout-expired");
 
   const { user, family, expenses, totalSpent, daysInMonth, categories, cards, memberSpending } = data;
   const typeStats = data.typeStats ?? { avulsa: 0, fixa: 0, parcelada: 0 };

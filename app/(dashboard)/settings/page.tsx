@@ -5,7 +5,7 @@ import { SettingsClient } from "@/components/settings-client";
 
 export default async function SettingsPage() {
   const session = await getSession();
-  if (!session) redirect("/login");
+  if (!session) redirect("/api/auth/signout-expired");
 
   const user = session.user;
 
