@@ -15,6 +15,8 @@ const DISMISSED_CAT_KEY = "gastamo_dismissed_cat_alerts";
 interface Props {
   open: boolean;
   onClose: () => void;
+  /** Atualiza contador na sidebar após carregar / dispensar */
+  onUpdate?: () => void;
 }
 
 function getDismissedCats(): Set<string> {
@@ -67,7 +69,7 @@ function NotificationIcon({ type }: { type: Notification["type"] }) {
   );
 }
 
-export function NotificationsPanel({ open, onClose }: Props) {
+export function NotificationsPanel({ open, onClose, onUpdate }: Props) {
   const [allNotifications, setAllNotifications] = useState<Notification[]>([]);
   const [dismissedCats, setDismissedCats] = useState<Set<string>>(new Set());
   const [isPending, startTransition] = useTransition();
@@ -77,6 +79,7 @@ export function NotificationsPanel({ open, onClose }: Props) {
     startTransition(async () => {
       const data = await getNotifications();
       setAllNotifications(data);
+      onUpdate?.();
     });
   };
 
@@ -98,9 +101,11 @@ export function NotificationsPanel({ open, onClose }: Props) {
       next.add(n.id);
       setDismissedCats(next);
       saveDismissedCats(next);
+      onUpdate?.();
     } else {
       setAllNotifications((prev) => prev.filter((x) => x.id !== n.id));
       await dismissNotification(n.id);
+      onUpdate?.();
     }
   };
 
@@ -110,6 +115,7 @@ export function NotificationsPanel({ open, onClose }: Props) {
     saveDismissedCats(catIds);
     setAllNotifications([]);
     await dismissAllNotifications();
+    onUpdate?.();
   };
 
   const handleInvite = async (n: Notification, action: "accept" | "decline") => {

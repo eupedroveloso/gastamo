@@ -56,21 +56,31 @@ export async function createExpense(
     include: { responsible: { select: { name: true } } },
   });
 
-  // Notify other family members
+  // Notificar outros integrantes da família (quem registrou não recebe)
   const otherMembers = await db.familyMember.findMany({
     where: { familyId: familyMember.familyId, userId: { not: session.userId } },
     select: { userId: true },
   });
   if (otherMembers.length > 0) {
     const amountFmt = amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-    await db.notification.createMany({
-      data: otherMembers.map((m) => ({
-        userId: m.userId,
-        type: "expense_added",
-        title: `${expense.responsible.name} adicionou um gasto`,
-        description: `${name} · ${amountFmt}`,
-      })),
-    });
+    const responsibleLabel = expense.responsible.name;
+    try {
+      await db.notification.createMany({
+        data: otherMembers.map((m) => ({
+          userId: m.userId,
+          type: "expense_added",
+          title: `Gasto adicionado — ${responsibleLabel}`,
+          description: `${responsibleLabel} registrou: ${name} · ${amountFmt}`,
+          metadata: JSON.stringify({
+            expenseId: expense.id,
+            responsibleName: responsibleLabel,
+            expenseName: name,
+          }),
+        })),
+      });
+    } catch (e) {
+      console.error("[createExpense] falha ao criar notificações (gasto salvo):", e);
+    }
   }
 
   revalidatePath("/");

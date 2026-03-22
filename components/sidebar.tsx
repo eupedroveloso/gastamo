@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Grid2Icon, SquareListIcon, MicrochipAiIcon, CogIcon, BellIcon } from "./icons";
 import { NotificationsPanel } from "./notifications-panel";
 import { AI_ENABLED } from "@/lib/config";
+import { getNotifications } from "@/lib/actions/notifications";
 
 interface SidebarItemProps {
   href: string;
@@ -67,6 +68,24 @@ function getIcon(name: string, color: string) {
 export function Sidebar() {
   const pathname = usePathname();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  const refreshUnread = useCallback(async () => {
+    try {
+      const list = await getNotifications();
+      setUnreadCount(list.length);
+    } catch {
+      setUnreadCount(0);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshUnread();
+  }, [refreshUnread]);
+
+  useEffect(() => {
+    if (!notificationsOpen) refreshUnread();
+  }, [notificationsOpen, refreshUnread]);
 
   return (
     <>
@@ -120,6 +139,7 @@ export function Sidebar() {
           title="Notificações"
           onClick={() => setNotificationsOpen(true)}
           style={{
+            position: "relative",
             width: 40,
             height: 40,
             borderRadius: "var(--radius-lg)",
@@ -133,12 +153,35 @@ export function Sidebar() {
           }}
         >
           <BellIcon size={24} color={notificationsOpen ? "var(--color-fg-default)" : "var(--color-fg-inverse)"} />
+          {unreadCount > 0 && (
+            <span
+              style={{
+                position: "absolute",
+                top: 2,
+                right: 2,
+                minWidth: 16,
+                height: 16,
+                padding: "0 4px",
+                borderRadius: 999,
+                background: "#DC2626",
+                color: "#FFF",
+                fontSize: 10,
+                fontWeight: 700,
+                lineHeight: "16px",
+                textAlign: "center",
+                boxSizing: "border-box",
+              }}
+            >
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </span>
+          )}
         </button>
       </aside>
 
       <NotificationsPanel
         open={notificationsOpen}
         onClose={() => setNotificationsOpen(false)}
+        onUpdate={refreshUnread}
       />
     </>
   );

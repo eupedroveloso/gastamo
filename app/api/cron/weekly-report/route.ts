@@ -1,19 +1,45 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
+/** Fuso para rótulos do relatório (Brasil sem horário de verão). */
+const TZ = "America/Sao_Paulo";
+
+function formatBrt(d: Date, opts: Intl.DateTimeFormatOptions) {
+  return new Intl.DateTimeFormat("pt-BR", { timeZone: TZ, ...opts }).format(d);
+}
+
+function buildFallbackWeeklySummary(params: {
+  familyName: string;
+  totalSpent: number;
+  expenseCount: number;
+  budget: number;
+  memberBreakdown: string;
+  topCategories: string;
+}): string {
+  const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const { familyName, totalSpent, expenseCount, budget, memberBreakdown, topCategories } = params;
+  const p1 = `Olá! Este é o resumo semanal da família "${familyName}". No período foram registrados ${expenseCount} gasto${expenseCount !== 1 ? "s" : ""}, totalizando ${fmt(totalSpent)}.`;
+  const p2 = budget > 0 ? `O orçamento mensal da família é ${fmt(budget)}.` : "Ainda não há orçamento mensal definido para a família.";
+  const p3 = `Gastos por integrante: ${memberBreakdown}.`;
+  const p4 = topCategories ? `Principais categorias: ${topCategories}.` : "";
+  const p5 = "Acesse o Gastamo para ver detalhes e planejar a próxima semana.";
+  return [p1, p2, p3, p4, p5].filter(Boolean).join(" ");
+}
+
+/**
+ * Cron Vercel: `10 19 * * 0` = domingo 19:10 UTC ≈ 16:10 em Brasília (America/Sao_Paulo).
+ * Proteja com CRON_SECRET: Authorization: Bearer <CRON_SECRET>
+ */
 export async function GET(req: NextRequest) {
   const secret = req.headers.get("authorization")?.replace("Bearer ", "");
   if (secret !== process.env.CRON_SECRET) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (!process.env.OPENROUTER_API_KEY) {
-    return NextResponse.json({ error: "AI not configured" }, { status: 503 });
-  }
-
   const now = new Date();
-  const weekStart = new Date(now);
-  weekStart.setDate(now.getDate() - 7);
+  const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+  const periodLabel = `${formatBrt(weekStart, { day: "2-digit", month: "short" })} – ${formatBrt(now, { day: "2-digit", month: "short", year: "numeric" })}`;
 
   try {
     const families = await db.family.findMany({
@@ -30,7 +56,7 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    const reports: { familyId: string; summary: string }[] = [];
+    let reportCount = 0;
 
     for (const family of families) {
       if (family.members.length === 0 || family.expenses.length === 0) continue;
@@ -55,14 +81,13 @@ export async function GET(req: NextRequest) {
         .map(([name, amount]) => `${name}: R$ ${amount.toFixed(2)}`)
         .join(", ");
 
-      const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-      const days = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
-      const weekStartLabel = `${weekStart.getDate()}/${weekStart.getMonth() + 1}`;
-      const weekEndLabel = `${now.getDate()}/${now.getMonth() + 1}`;
+      let summary: string;
 
-      const prompt = `Você é um assistente financeiro pessoal brasileiro. Analise os dados de gastos da semana da família "${family.name}" e escreva um resumo semanal em português, de forma amigável e útil. Seja direto e objetivo — máximo de 4 parágrafos curtos.
+      if (process.env.OPENROUTER_API_KEY) {
+        const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+        const prompt = `Você é um assistente financeiro pessoal brasileiro. Analise os dados de gastos da semana da família "${family.name}" e escreva um resumo semanal em português, de forma amigável e útil. Seja direto e objetivo — máximo de 4 parágrafos curtos.
 
-Dados da semana (${weekStartLabel} a ${weekEndLabel}):
+Período (${periodLabel}):
 - Total gasto: ${fmt(totalSpent)}
 - Orçamento mensal da família: ${fmt(family.budget)}
 - Número de transações: ${family.expenses.length}
@@ -75,43 +100,70 @@ Escreva um resumo que:
 3. Dê uma observação construtiva ou dica para a próxima semana
 Não use bullet points, escreva em parágrafos fluidos.`;
 
-      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          "HTTP-Referer": process.env.OPENROUTER_SITE_URL ?? "https://gastamo.app",
-          "X-Title": process.env.OPENROUTER_APP_NAME ?? "Gastamo",
-        },
-        body: JSON.stringify({
-          model: process.env.OPENROUTER_MODEL ?? "google/gemini-2.0-flash-001",
-          messages: [{ role: "user", content: prompt }],
-          temperature: 0.7,
-          max_tokens: 600,
-        }),
-      });
+        const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+            "HTTP-Referer": process.env.OPENROUTER_SITE_URL ?? "https://gastamo.app",
+            "X-Title": process.env.OPENROUTER_APP_NAME ?? "Gastamo",
+          },
+          body: JSON.stringify({
+            model: process.env.OPENROUTER_MODEL ?? "google/gemini-2.0-flash-001",
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.7,
+            max_tokens: 600,
+          }),
+        });
 
-      if (!res.ok) continue;
+        if (!res.ok) {
+          summary = buildFallbackWeeklySummary({
+            familyName: family.name,
+            totalSpent,
+            expenseCount: family.expenses.length,
+            budget: family.budget,
+            memberBreakdown,
+            topCategories: topCategories.join(", "),
+          });
+        } else {
+          const data = await res.json();
+          summary = (data.choices?.[0]?.message?.content as string) ?? "";
+          if (!summary.trim()) {
+            summary = buildFallbackWeeklySummary({
+              familyName: family.name,
+              totalSpent,
+              expenseCount: family.expenses.length,
+              budget: family.budget,
+              memberBreakdown,
+              topCategories: topCategories.join(", "),
+            });
+          }
+        }
+      } else {
+        summary = buildFallbackWeeklySummary({
+          familyName: family.name,
+          totalSpent,
+          expenseCount: family.expenses.length,
+          budget: family.budget,
+          memberBreakdown,
+          topCategories: topCategories.join(", "),
+        });
+      }
 
-      const data = await res.json();
-      const summary: string = data.choices?.[0]?.message?.content ?? "";
-      if (!summary) continue;
-
-      reports.push({ familyId: family.id, summary });
-
-      // Create a notification for each family member
       await db.notification.createMany({
         data: family.members.map((m) => ({
           userId: m.user.id,
           type: "weekly_report",
-          title: `Resumo semanal — ${weekStartLabel} a ${weekEndLabel}`,
+          title: `Relatório semanal de domingo — ${periodLabel}`,
           description: summary.slice(0, 200) + (summary.length > 200 ? "…" : ""),
-          metadata: JSON.stringify({ fullReport: summary }),
+          metadata: JSON.stringify({ fullReport: summary, period: periodLabel }),
         })),
       });
+
+      reportCount++;
     }
 
-    return NextResponse.json({ ok: true, reports: reports.length });
+    return NextResponse.json({ ok: true, reports: reportCount });
   } catch (err) {
     console.error("[weekly-report cron]", err);
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
