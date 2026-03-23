@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback } from "react";
 import { UploadIcon, CloseIcon, SparklesIcon, TrashCanIcon } from "./icons";
 import { bulkCreateExpenses } from "@/lib/actions/expenses";
+import { getTodayBrazilYMD } from "@/lib/date-local";
 
 type Step = "upload" | "loading" | "review" | "success";
 
@@ -86,7 +87,7 @@ export function ExpenseImportPanel({ categories, cards, members, onClose }: Prop
         id: `${i}-${Date.now()}`,
         name: String(e.name ?? ""),
         amount: Number(e.amount) || 0,
-        date: String(e.date ?? new Date().toISOString().split("T")[0]),
+        date: String(e.date ?? getTodayBrazilYMD()),
         type: String(e.type ?? "avulsa"),
         selected: true,
       }));
@@ -290,7 +291,7 @@ export function ExpenseImportPanel({ categories, cards, members, onClose }: Prop
                   </div>
                 </div>
                 <div style={{ fontSize: 11, color: "var(--color-fg-subtle)", fontWeight: 300, lineHeight: 1.5 }}>
-                  Suporta: recibos, notas fiscais, faturas de cartão e extratos bancários
+                  Suporta: recibos, notas fiscais, faturas e extratos bancários
                 </div>
               </div>
               <input
@@ -562,14 +563,14 @@ export function ExpenseImportPanel({ categories, cards, members, onClose }: Prop
                   </div>
                   <div>
                     <label style={{ fontSize: 12, fontWeight: 500, color: "var(--color-fg-muted)", display: "block", marginBottom: 4 }}>
-                      Cartão
+                      Pagamento
                     </label>
                     <select
                       value={cardId}
                       onChange={(e) => setCardId(e.target.value)}
                       style={selectStyle}
                     >
-                      <option value="">Sem cartão</option>
+                      <option value="">Sem pagamento</option>
                       {cards.map((c) => (
                         <option key={c.id} value={c.id}>
                           {c.name}

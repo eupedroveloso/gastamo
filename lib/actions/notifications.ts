@@ -30,15 +30,23 @@ export async function getNotifications(): Promise<Notification[]> {
       }),
     ]);
 
-    const notifications: Notification[] = dbNotifications.map((n) => ({
-      id: n.id,
-      type: n.type as Notification["type"],
-      title: n.title,
-      description: n.description,
-      createdAt: n.createdAt,
-      read: n.read,
-      metadata: n.metadata ? (JSON.parse(n.metadata) as Record<string, string>) : null,
-    }));
+    const notifications: Notification[] = dbNotifications.map((n) => {
+      const metadata = n.metadata ? (JSON.parse(n.metadata) as Record<string, string>) : null;
+      // Relatórios antigos tinham descrição truncada; texto completo ficava em metadata.fullReport
+      let description = n.description;
+      if (n.type === "weekly_report" && metadata?.fullReport) {
+        description = metadata.fullReport;
+      }
+      return {
+        id: n.id,
+        type: n.type as Notification["type"],
+        title: n.title,
+        description,
+        createdAt: n.createdAt,
+        read: n.read,
+        metadata,
+      };
+    });
 
     // Computed: categories over limit
     if (member) {

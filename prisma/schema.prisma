@@ -63,9 +63,15 @@ model Category {
 }
 
 model Card {
-  id        String   @id @default(cuid())
-  name      String
-  createdAt DateTime @default(now())
+  id                   String   @id @default(cuid())
+  name                 String
+  /// Imagem do cartão (data URL), formato horizontal recortado no cliente.
+  image                String?
+  /// Dia do mês em que a fatura fecha (1–31). Opcional; usado para somar gastos do ciclo da fatura.
+  statementClosingDay  Int?
+  /// Dias após o fechamento até o vencimento (ciclo de faturamento).
+  dueDayOffset         Int      @default(7)
+  createdAt            DateTime @default(now())
 
   familyId String
   family   Family    @relation(fields: [familyId], references: [id], onDelete: Cascade)

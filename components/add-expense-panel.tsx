@@ -417,7 +417,7 @@ export function AddExpensePanel({ open, onClose, categories, cards, members }: P
                 </div>
               </FormField>
 
-              <FormField label="Cartão Utilizado">
+              <FormField label="Pagamento">
                 <div style={fieldStyle}>
                   <select
                     name="cardId"
@@ -425,7 +425,7 @@ export function AddExpensePanel({ open, onClose, categories, cards, members }: P
                     onChange={(e) => setCardId(e.target.value)}
                     style={{ ...inputStyle, color: "var(--color-fg-subtle)", cursor: "pointer" }}
                   >
-                    <option value="">Selecione o Cartão (opcional)</option>
+                    <option value="">Selecione o pagamento (opcional)</option>
                     {localCards.map((c) => (
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
@@ -442,7 +442,7 @@ export function AddExpensePanel({ open, onClose, categories, cards, members }: P
                     style={linkBtnStyle}
                   >
                     <PlusIcon size={12} color="var(--color-bg-brand-default)" />
-                    {showNewCard ? "Fechar" : "Novo cartão"}
+                    {showNewCard ? "Fechar" : "Novo pagamento"}
                   </button>
                   {showNewCard && (
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>

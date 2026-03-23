@@ -38,7 +38,7 @@ export async function createCardQuick(
   rawName: string
 ): Promise<{ id: string; name: string } | { error: string }> {
   const name = rawName.trim();
-  if (!name) return { error: "Nome do cartão é obrigatório" };
+  if (!name) return { error: "Nome do pagamento é obrigatório" };
 
   const session = await getSession();
   if (!session) return { error: "Não autorizado" };
@@ -54,6 +54,6 @@ export async function createCardQuick(
     revalidateExpenseSurfaces();
     return { id: card.id, name: card.name };
   } catch {
-    return { error: "Erro ao criar cartão" };
+    return { error: "Erro ao criar pagamento" };
   }
 }

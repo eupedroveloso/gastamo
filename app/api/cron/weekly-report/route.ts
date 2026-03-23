@@ -155,8 +155,8 @@ Não use bullet points, escreva em parágrafos fluidos.`;
           userId: m.user.id,
           type: "weekly_report",
           title: `Relatório semanal de domingo — ${periodLabel}`,
-          description: summary.slice(0, 200) + (summary.length > 200 ? "…" : ""),
-          metadata: JSON.stringify({ fullReport: summary, period: periodLabel }),
+          description: summary,
+          metadata: JSON.stringify({ period: periodLabel }),
         })),
       });
 

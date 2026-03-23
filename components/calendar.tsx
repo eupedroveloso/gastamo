@@ -7,6 +7,8 @@ interface CalendarProps {
   value: string;
   onChange: (date: string) => void;
   placeholder?: string;
+  /** Quando true, o rótulo mostra só o dia do mês (ex.: "Dia 15") — útil para fechamento de fatura onde só o dia é persistido. */
+  dayOfMonthLabel?: boolean;
 }
 
 const MONTHS = [
@@ -305,7 +307,7 @@ const CalendarIcon = ({ color = "#A3A3A3" }: { color?: string }) => (
   </svg>
 );
 
-export function Calendar({ value, onChange, placeholder = "Filtrar Data" }: CalendarProps) {
+export function Calendar({ value, onChange, placeholder = "Filtrar Data", dayOfMonthLabel }: CalendarProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -322,8 +324,12 @@ export function Calendar({ value, onChange, placeholder = "Filtrar Data" }: Cale
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
-  const displayValue = selectedDate
-    ? selectedDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })
+  const displayValue = value
+    ? dayOfMonthLabel && /^\d{4}-\d{2}-(\d{2})$/.test(value)
+      ? `Dia ${parseInt(value.slice(8, 10), 10)}`
+      : selectedDate
+        ? selectedDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })
+        : ""
     : "";
 
   return (

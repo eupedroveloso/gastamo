@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
+import { parseExpenseDateString, parseLocalDateInput } from "@/lib/date-local";
 
 export type ExpenseState = { error?: string; success?: boolean } | null;
 
@@ -43,7 +44,7 @@ export async function createExpense(
     data: {
       name,
       invoiceId: invoiceId || null,
-      date: new Date(dateStr),
+      date: parseLocalDateInput(dateStr),
       amount,
       type,
       totalInstallments,
@@ -122,7 +123,7 @@ export async function updateExpense(
     data: {
       name,
       invoiceId: invoiceId || null,
-      date: new Date(dateStr),
+      date: parseLocalDateInput(dateStr),
       amount,
       type,
       totalInstallments,
@@ -227,7 +228,7 @@ export async function bulkCreateExpenses(
     data: expenses.map((e: { name: string; amount: number; date: string; type: string; categoryId?: string; responsibleId: string; cardId?: string }) => ({
       name: e.name,
       amount: e.amount,
-      date: new Date(e.date),
+      date: parseExpenseDateString(e.date),
       type: e.type,
       pending: true,
       familyId: member.familyId,

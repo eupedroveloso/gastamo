@@ -5,8 +5,17 @@ import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
+import { parseClosingDayFromInput } from "@/lib/statement-cycle";
 
 type ActionResult = { error?: string; success?: string } | null;
+
+function validateCardImageDataUrl(s: string): boolean {
+  if (s.length < 50 || s.length > 5_000_000) return false;
+  if (!/^data:image\/(jpeg|jpg|png|webp);base64,/i.test(s)) return false;
+  const b64 = s.split(",")[1] ?? "";
+  const approxBytes = (b64.length * 3) / 4;
+  return approxBytes <= 3 * 1024 * 1024;
+}
 
 export async function updateProfile(prevState: ActionResult, formData: FormData): Promise<ActionResult> {
   const session = await getSession();
@@ -393,18 +402,103 @@ export async function createCard(prevState: ActionResult, formData: FormData): P
   if (!session) return { error: "Não autorizado" };
 
   const name = (formData.get("cardName") as string)?.trim();
-  if (!name) return { error: "Nome do cartão é obrigatório" };
+  if (!name) return { error: "Nome do pagamento é obrigatório" };
+
+  const closingRaw = String(formData.get("closingDate") ?? "").trim();
+  const statementClosingDay = closingRaw ? parseClosingDayFromInput(closingRaw) : null;
+  if (closingRaw && statementClosingDay == null) return { error: "Data de fechamento inválida" };
+
+  const rawImg = String(formData.get("cardImage") ?? "").trim();
+  let image: string | null = null;
+  if (rawImg) {
+    if (!validateCardImageDataUrl(rawImg)) return { error: "Imagem inválida ou muito grande (máx. ~3 MB)" };
+    image = rawImg;
+  }
 
   try {
     const member = await db.familyMember.findFirst({ where: { userId: session.userId } });
     if (!member) return { error: "Família não encontrada" };
 
-    await db.card.create({ data: { name, familyId: member.familyId } });
+    await db.card.create({
+      data: { name, familyId: member.familyId, statementClosingDay, image },
+    });
     revalidatePath("/settings");
     revalidatePath("/");
-    return { success: "Cartão criado" };
+    return { success: "Pagamento criado" };
   } catch {
-    return { error: "Erro ao criar cartão" };
+    return { error: "Erro ao criar pagamento" };
+  }
+}
+
+export async function updateCardImage(cardId: string, imageDataUrl: string | null): Promise<ActionResult> {
+  const session = await getSession();
+  if (!session) return { error: "Não autorizado" };
+
+  try {
+    const member = await db.familyMember.findFirst({ where: { userId: session.userId } });
+    if (!member) return { error: "Família não encontrada" };
+
+    const card = await db.card.findFirst({
+      where: { id: cardId, familyId: member.familyId },
+      select: { id: true },
+    });
+    if (!card) return { error: "Pagamento não encontrado" };
+
+    if (imageDataUrl != null && imageDataUrl !== "") {
+      if (!validateCardImageDataUrl(imageDataUrl)) {
+        return { error: "Imagem inválida ou muito grande (máx. ~3 MB)" };
+      }
+      await db.card.update({ where: { id: cardId }, data: { image: imageDataUrl } });
+    } else {
+      await db.card.update({ where: { id: cardId }, data: { image: null } });
+    }
+
+    revalidatePath("/settings");
+    revalidatePath("/");
+    return { success: "Imagem do cartão atualizada" };
+  } catch {
+    return { error: "Erro ao salvar imagem" };
+  }
+}
+
+export async function updateCardStatementClosing(prevState: ActionResult, formData: FormData): Promise<ActionResult> {
+  const session = await getSession();
+  if (!session) return { error: "Não autorizado" };
+
+  const cardId = (formData.get("cardId") as string)?.trim();
+  if (!cardId) return { error: "Pagamento inválido" };
+
+  const closingRaw = String(formData.get("closingDate") ?? "").trim();
+  const statementClosingDay = closingRaw ? parseClosingDayFromInput(closingRaw) : null;
+  if (closingRaw && statementClosingDay == null) return { error: "Data de fechamento inválida" };
+
+  const dueRaw = String(formData.get("dueDayOffset") ?? "").trim();
+  let dueDayOffset = 7;
+  if (dueRaw !== "") {
+    const n = parseInt(dueRaw, 10);
+    if (!Number.isFinite(n) || n < 0 || n > 60) return { error: "Prazo de vencimento inválido (0–60 dias)" };
+    dueDayOffset = n;
+  }
+
+  try {
+    const member = await db.familyMember.findFirst({ where: { userId: session.userId } });
+    if (!member) return { error: "Família não encontrada" };
+
+    const card = await db.card.findFirst({
+      where: { id: cardId, familyId: member.familyId },
+      select: { id: true },
+    });
+    if (!card) return { error: "Pagamento não encontrado" };
+
+    await db.card.update({
+      where: { id: cardId },
+      data: { statementClosingDay, dueDayOffset },
+    });
+    revalidatePath("/settings");
+    revalidatePath("/");
+    return { success: "Fechamento da fatura atualizado" };
+  } catch {
+    return { error: "Erro ao atualizar fechamento" };
   }
 }
 

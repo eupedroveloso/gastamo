@@ -18,6 +18,21 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
+## Base de dados — migrações sem perder dados
+
+1. Garante que o **PostgreSQL está a correr** e que `DATABASE_URL` no `.env` (ou `.env.local`) aponta para a base certa.
+2. *(Opcional, recomendado em produção)* Faz backup antes de migrar, por exemplo:
+   ```bash
+   pg_dump "$DATABASE_URL" > backup-$(date +%Y%m%d).sql
+   ```
+3. Aplica migrações **sem reset** (só `ALTER TABLE` / colunas novas, etc.):
+   ```bash
+   npm run db:migrate
+   ```
+   Equivale a `prisma generate` + `prisma migrate deploy` — **não** apaga tabelas nem utilizadores.
+
+Se ainda não usas a tabela `_prisma_migrations` e a base foi criada só com `db push`, na primeira vez podes precisar de [baselining](https://www.prisma.io/docs/guides/migrate/developing-with-prisma-migrate/baselining) ou continuar com `npx prisma db push` (também acrescenta colunas opcionais sem apagar dados, desde que não uses `--force-reset`).
+
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
 ## Learn More

@@ -45,8 +45,8 @@ Total gasto em ${ctx.currentMonth}: ${formatBRL(ctx.totalSpentThisMonth)}`;
 
   const cardsInfo =
     ctx.cards.length > 0
-      ? `Cartões cadastrados: ${ctx.cards.join(", ")}`
-      : "Nenhum cartão cadastrado.";
+      ? `Pagamentos cadastrados: ${ctx.cards.join(", ")}`
+      : "Nenhum pagamento cadastrado.";
 
   return `Você é o Gasta, assistente financeiro inteligente do app Gastamo — uma plataforma de gestão financeira familiar.
 
@@ -75,7 +75,7 @@ ${categoryInfo}
 ### Top gastos
 ${topExpensesInfo}
 
-### Cartões
+### Pagamentos
 ${cardsInfo}
 
 ## Instruções de comportamento

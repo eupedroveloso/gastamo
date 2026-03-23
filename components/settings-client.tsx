@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useActionState, useRef, useEffect, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   updateProfile,
   updateFamilyName,
@@ -13,6 +14,8 @@ import {
   deleteCategory,
   updateCategoryLimit,
   createCard,
+  updateCardStatementClosing,
+  updateCardImage,
   deleteCard,
   uploadAvatar,
   deleteAccount,
@@ -29,6 +32,11 @@ import {
   PencilIcon,
   EyeIcon,
 } from "./icons";
+import { closingDayToInputValue } from "@/lib/statement-cycle";
+import { sortMembersForBudgetDisplay } from "@/lib/member-display-order";
+import { Calendar } from "./calendar";
+import { CardImageCropModal } from "./card-image-crop-modal";
+import { PaymentCardThumbnail } from "./payment-card-thumbnail";
 
 type Tab = "profile" | "family" | "categories" | "cards";
 
@@ -63,6 +71,9 @@ interface Category {
 interface Card {
   id: string;
   name: string;
+  statementClosingDay?: number | null;
+  dueDayOffset?: number | null;
+  image?: string | null;
 }
 
 interface Family {
@@ -140,6 +151,324 @@ const sectionTitleStyle: React.CSSProperties = {
   margin: 0,
 };
 
+type SettingsFormState = { error?: string; success?: string } | null;
+
+type FormActionProp = NonNullable<React.ComponentProps<"form">["action"]>;
+
+function CardStatementClosingForm({
+  cardId,
+  initialClosingDay,
+  initialDueDayOffset,
+  closingAction,
+  closingPending,
+}: {
+  cardId: string;
+  initialClosingDay: number | null;
+  initialDueDayOffset: number;
+  closingAction: FormActionProp;
+  closingPending: boolean;
+}) {
+  const [closingYmd, setClosingYmd] = useState(() => closingDayToInputValue(initialClosingDay));
+  const [dueOffset, setDueOffset] = useState(String(initialDueDayOffset));
+  return (
+    <form action={closingAction} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
+      <input type="hidden" name="cardId" value={cardId} />
+      <input type="hidden" name="closingDate" value={closingYmd} />
+      <span style={{ fontSize: 12, fontWeight: 500, color: "#404040" }}>Fechamento</span>
+      <Calendar
+        value={closingYmd}
+        onChange={setClosingYmd}
+        placeholder="Dia do fechamento"
+        dayOfMonthLabel
+      />
+      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 500, color: "#404040" }}>
+        Vencimento (+dias)
+        <input
+          name="dueDayOffset"
+          type="number"
+          min={0}
+          max={60}
+          value={dueOffset}
+          onChange={(e) => setDueOffset(e.target.value)}
+          style={{
+            width: 52,
+            padding: "8px 10px",
+            borderRadius: 10,
+            border: "1px solid #E5E5E5",
+            fontSize: 13,
+            fontFamily: "var(--font-albert-sans), sans-serif",
+          }}
+        />
+      </label>
+      <button
+        type="submit"
+        disabled={closingPending}
+        style={{
+          padding: "10px 16px",
+          borderRadius: 12,
+          background: "#1A3A2E",
+          border: "none",
+          cursor: closingPending ? "not-allowed" : "pointer",
+          opacity: closingPending ? 0.7 : 1,
+          fontSize: 13,
+          fontWeight: 600,
+          color: "#FFFFFF",
+          fontFamily: "var(--font-albert-sans), sans-serif",
+        }}
+      >
+        Salvar
+      </button>
+      <span style={{ fontSize: 11, color: "#A3A3A3", width: "100%" }}>
+        Só o dia do mês é salvo. Use &quot;Limpar data&quot; no calendário e salve para remover o fechamento. O vencimento é calculado a partir do dia de fechamento do ciclo.
+      </span>
+    </form>
+  );
+}
+
+function CreatePaymentMethodForm({
+  cardAction,
+  cardPending,
+  cardState,
+}: {
+  cardAction: FormActionProp;
+  cardPending: boolean;
+  cardState: SettingsFormState;
+}) {
+  const [closingYmd, setClosingYmd] = useState("");
+  const [cardImageData, setCardImageData] = useState("");
+  const [cropOpen, setCropOpen] = useState(false);
+  useEffect(() => {
+    if (cardState?.success) {
+      setClosingYmd("");
+      setCardImageData("");
+    }
+  }, [cardState?.success]);
+  return (
+    <>
+      <form action={cardAction} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12 }}>
+        <div style={{ ...inputStyle, width: 300 }}>
+          <input name="cardName" style={inputTextStyle} placeholder="Nome do pagamento" />
+        </div>
+        <input type="hidden" name="closingDate" value={closingYmd} />
+        <input type="hidden" name="cardImage" value={cardImageData} />
+        <Calendar
+          value={closingYmd}
+          onChange={setClosingYmd}
+          placeholder="Fechamento (opcional)"
+          dayOfMonthLabel
+        />
+        <button
+          type="button"
+          onClick={() => setCropOpen(true)}
+          style={{
+            padding: "10px 14px",
+            borderRadius: 12,
+            border: "1px solid #E5E5E5",
+            background: "#FFFFFF",
+            fontSize: 13,
+            fontWeight: 600,
+            color: "#0A0A0A",
+            cursor: "pointer",
+            fontFamily: "var(--font-albert-sans), sans-serif",
+          }}
+        >
+          {cardImageData ? "Alterar imagem" : "Imagem do cartão"}
+        </button>
+        {cardImageData ? (
+          <button
+            type="button"
+            onClick={() => setCardImageData("")}
+            style={{
+              padding: "10px 12px",
+              borderRadius: 12,
+              border: "none",
+              background: "transparent",
+              fontSize: 12,
+              fontWeight: 600,
+              color: "#DC2626",
+              cursor: "pointer",
+              fontFamily: "var(--font-albert-sans), sans-serif",
+            }}
+          >
+            Remover imagem
+          </button>
+        ) : null}
+        <button
+          type="submit"
+          disabled={cardPending}
+          style={{
+            width: 160,
+            padding: "12px 16px",
+            borderRadius: 16,
+            background: "#1A3A2E",
+            border: "none",
+            cursor: cardPending ? "not-allowed" : "pointer",
+            opacity: cardPending ? 0.7 : 1,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+            fontSize: 14,
+            fontWeight: 600,
+            color: "#FFFFFF",
+            fontFamily: "var(--font-albert-sans), sans-serif",
+            flexShrink: 0,
+          }}
+        >
+          Criar
+        </button>
+      </form>
+      <CardImageCropModal
+        open={cropOpen}
+        onClose={() => setCropOpen(false)}
+        onComplete={(u) => {
+          setCardImageData(u);
+          setCropOpen(false);
+        }}
+      />
+    </>
+  );
+}
+
+function SettingsPaymentCardRow({
+  card,
+  closingAction,
+  closingPending,
+}: {
+  card: Card;
+  closingAction: FormActionProp;
+  closingPending: boolean;
+}) {
+  const router = useRouter();
+  const deleteCardWithId = deleteCard.bind(null, card.id);
+  const closingDay = card.statementClosingDay ?? null;
+  const [cropOpen, setCropOpen] = useState(false);
+  const [imgNote, setImgNote] = useState<{ error?: string; success?: string }>({});
+  const [imgBusy, startImg] = useTransition();
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+        padding: 16,
+        border: "1px solid #F5F5F5",
+        borderRadius: 12,
+        boxSizing: "border-box",
+        marginBottom: 8,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 14, minWidth: 0, flex: 1 }}>
+          <PaymentCardThumbnail imageUrl={card.image} name={card.name} width={120} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "#0A0A0A" }}>{card.name}</span>
+            {closingDay != null && (
+              <span style={{ fontSize: 12, color: "#737373" }}>
+                Fatura fecha dia <strong>{closingDay}</strong> de cada mês
+              </span>
+            )}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+              <button
+                type="button"
+                disabled={imgBusy}
+                onClick={() => {
+                  setImgNote({});
+                  setCropOpen(true);
+                }}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #E5E5E5",
+                  background: "#FFF",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: "#0A0A0A",
+                  cursor: imgBusy ? "not-allowed" : "pointer",
+                  fontFamily: "var(--font-albert-sans), sans-serif",
+                }}
+              >
+                {card.image ? "Alterar imagem" : "Adicionar imagem"}
+              </button>
+              {card.image ? (
+                <button
+                  type="button"
+                  disabled={imgBusy}
+                  onClick={() => {
+                    setImgNote({});
+                    startImg(async () => {
+                      const r = await updateCardImage(card.id, null);
+                      if (r?.error) setImgNote({ error: r.error });
+                      else {
+                        setImgNote({ success: r?.success ?? "Removido" });
+                        router.refresh();
+                      }
+                    });
+                  }}
+                  style={{
+                    padding: "8px 10px",
+                    borderRadius: 10,
+                    border: "none",
+                    background: "transparent",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: "#DC2626",
+                    cursor: imgBusy ? "not-allowed" : "pointer",
+                    fontFamily: "var(--font-albert-sans), sans-serif",
+                  }}
+                >
+                  Remover imagem
+                </button>
+              ) : null}
+            </div>
+            {imgNote.error && <span style={{ fontSize: 12, color: "#DC2626" }}>{imgNote.error}</span>}
+            {imgNote.success && <span style={{ fontSize: 12, color: "#0F8F4E" }}>{imgNote.success}</span>}
+          </div>
+        </div>
+        <form action={deleteCardWithId}>
+          <button
+            type="submit"
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: 4,
+              display: "flex",
+              alignItems: "center",
+            }}
+            title="Excluir pagamento"
+          >
+            <TrashCanIcon size={16} color="#A3A3A3" />
+          </button>
+        </form>
+      </div>
+      <CardStatementClosingForm
+        cardId={card.id}
+        initialClosingDay={closingDay}
+        initialDueDayOffset={card.dueDayOffset ?? 7}
+        closingAction={closingAction}
+        closingPending={closingPending}
+      />
+      <CardImageCropModal
+        open={cropOpen}
+        onClose={() => setCropOpen(false)}
+        onComplete={(dataUrl) => {
+          setImgNote({});
+          startImg(async () => {
+            const r = await updateCardImage(card.id, dataUrl);
+            if (r?.error) setImgNote({ error: r.error });
+            else {
+              setImgNote({ success: r?.success ?? "Salvo" });
+              router.refresh();
+            }
+          });
+        }}
+      />
+    </div>
+  );
+}
+
 function DeleteAccountButton() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -208,7 +537,7 @@ function DeleteAccountButton() {
               background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 12, padding: 16,
               fontSize: 13, color: "#991B1B", lineHeight: 1.6,
             }}>
-              Todos os seus dados serão excluídos permanentemente: perfil, gastos, categorias, cartões, sessões e configurações da família. Se você for o único membro, a família inteira será removida.
+              Todos os seus dados serão excluídos permanentemente: perfil, gastos, categorias, pagamentos cadastrados, sessões e configurações da família. Se você for o único membro, a família inteira será removida.
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -288,6 +617,7 @@ export function SettingsClient({ user, family, pendingInvitesSent, pendingInvite
   const [categoryState, categoryAction, categoryPending] = useActionState(createCategory, null);
   const [categoryLimitState, categoryLimitAction, categoryLimitPending] = useActionState(updateCategoryLimit, null);
   const [cardState, cardAction, cardPending] = useActionState(createCard, null);
+  const [closingState, closingAction, closingPending] = useActionState(updateCardStatementClosing, null);
 
   useEffect(() => {
     if (avatarState?.success) {
@@ -320,7 +650,7 @@ export function SettingsClient({ user, family, pendingInvitesSent, pendingInvite
     { id: "profile", label: "Meu perfil", icon: <UserVneckIcon size={16} color="currentColor" /> },
     { id: "family", label: "Família", icon: <UsersIcon size={16} color="currentColor" /> },
     { id: "categories", label: "Categorias", icon: <TagIcon size={16} color="currentColor" /> },
-    { id: "cards", label: "Cartões", icon: <CreditCardAltIcon size={16} color="currentColor" /> },
+    { id: "cards", label: "Pagamentos", icon: <CreditCardAltIcon size={16} color="currentColor" /> },
   ];
 
   return (
@@ -384,7 +714,7 @@ export function SettingsClient({ user, family, pendingInvitesSent, pendingInvite
             );
           })}
 
-          {/* Sair da conta - below Cartões */}
+          {/* Sair da conta - abaixo de Pagamentos */}
           <form action={logout} style={{ marginTop: 8 }}>
             <button
               type="submit"
@@ -938,7 +1268,7 @@ export function SettingsClient({ user, family, pendingInvitesSent, pendingInvite
                     {(() => {
                       const myMember = family.members.find((m) => m.userId === user.id);
                       const iAmAdmin = myMember?.role === "owner" || myMember?.role === "admin";
-                      return family.members.map((member) => {
+                      return sortMembersForBudgetDisplay(family.members).map((member) => {
                         const memberInitials = member.user.name
                           .split(" ")
                           .map((n) => n[0])
@@ -1435,112 +1765,53 @@ export function SettingsClient({ user, family, pendingInvitesSent, pendingInvite
           {activeTab === "cards" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <div style={{ display: "flex", alignItems: "center", height: 48 }}>
-                <p style={sectionTitleStyle}>Cartões</p>
+                <p style={sectionTitleStyle}>Pagamentos</p>
               </div>
 
+              <p style={{ fontSize: 13, color: "#737373", margin: "0 0 8px", lineHeight: 1.45 }}>
+                Defina o <strong>dia do fechamento da fatura</strong> no calendário: o app usa só o <strong>dia do mês</strong> para
+                somar os gastos lançados na fatura em aberto (ciclo do cartão), alinhado ao que aparece no extrato. Adicione uma{" "}
+                <strong>imagem horizontal</strong> (formato cartão) com recorte no próprio app.
+              </p>
+
               <div style={{ display: "flex", flexDirection: "column" }}>
-                {(family?.cards ?? []).map((card) => {
-                  const deleteCardWithId = deleteCard.bind(null, card.id);
-                  return (
-                    <div
-                      key={card.id}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        padding: 16,
-                        border: "1px solid #F5F5F5",
-                        borderRadius: 12,
-                        height: 72,
-                        boxSizing: "border-box",
-                        marginBottom: 4,
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                        <div
-                          style={{
-                            width: 40,
-                            height: 40,
-                            borderRadius: 8,
-                            background: "#F0FAF5",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                          }}
-                        >
-                          <CreditCardAltIcon size={16} color="#0F8F4E" />
-                        </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                          <span style={{ fontSize: 13, fontWeight: 600, color: "#0A0A0A" }}>{card.name}</span>
-                        </div>
-                      </div>
-                      <form action={deleteCardWithId}>
-                        <button
-                          type="submit"
-                          style={{
-                            background: "none",
-                            border: "none",
-                            cursor: "pointer",
-                            padding: 4,
-                            display: "flex",
-                            alignItems: "center",
-                          }}
-                          title="Excluir cartão"
-                        >
-                          <TrashCanIcon size={16} color="#A3A3A3" />
-                        </button>
-                      </form>
-                    </div>
-                  );
-                })}
+                {(family?.cards ?? []).map((card) => (
+                  <SettingsPaymentCardRow
+                    key={card.id}
+                    card={card}
+                    closingAction={closingAction as FormActionProp}
+                    closingPending={closingPending}
+                  />
+                ))}
 
                 {(family?.cards ?? []).length === 0 && (
-                  <p style={{ fontSize: 14, color: "#A3A3A3", margin: "8px 0" }}>Nenhum cartão cadastrado.</p>
+                  <p style={{ fontSize: 14, color: "#A3A3A3", margin: "8px 0" }}>Nenhum pagamento cadastrado.</p>
                 )}
               </div>
 
               <div style={dividerStyle} />
 
               {/* Add card */}
-              <p style={sectionTitleStyle}>Adicionar novo cartão</p>
-              <form action={cardAction} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ ...inputStyle, width: 300 }}>
-                  <input
-                    name="cardName"
-                    style={inputTextStyle}
-                    placeholder="Nome do cartão"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={cardPending}
-                  style={{
-                    width: 160,
-                    padding: "12px 16px",
-                    borderRadius: 16,
-                    background: "#1A3A2E",
-                    border: "none",
-                    cursor: cardPending ? "not-allowed" : "pointer",
-                    opacity: cardPending ? 0.7 : 1,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 8,
-                    fontSize: 14,
-                    fontWeight: 600,
-                    color: "#FFFFFF",
-                    fontFamily: "var(--font-albert-sans), sans-serif",
-                    flexShrink: 0,
-                  }}
-                >
-                  Criar
-                </button>
-              </form>
+              <p style={sectionTitleStyle}>Adicionar novo pagamento</p>
+              <CreatePaymentMethodForm
+                cardAction={cardAction as FormActionProp}
+                cardPending={cardPending}
+                cardState={cardState}
+              />
+              <p style={{ fontSize: 11, color: "#A3A3A3", margin: "4px 0 0", width: "100%" }}>
+                Opcional: use o mesmo calendário da aba Gastos — gravamos só o dia do mês como fechamento da fatura.
+              </p>
               {cardState?.error && (
                 <p style={{ color: "#DC2626", fontSize: 13, margin: 0 }}>{cardState.error}</p>
               )}
               {cardState?.success && (
                 <p style={{ color: "#0F8F4E", fontSize: 13, margin: 0 }}>{cardState.success}</p>
+              )}
+              {closingState?.error && (
+                <p style={{ color: "#DC2626", fontSize: 13, margin: "8px 0 0" }}>{closingState.error}</p>
+              )}
+              {closingState?.success && (
+                <p style={{ color: "#0F8F4E", fontSize: 13, margin: "8px 0 0" }}>{closingState.success}</p>
               )}
             </div>
           )}

@@ -2,6 +2,9 @@
 
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
+import { formatDateBrazil } from "@/lib/date-local";
+import { parceladaAmountInPeriod } from "@/lib/parcelada-in-period";
+import { sortMembersForBudgetDisplay } from "@/lib/member-display-order";
 
 export interface FinancialContext {
   userName: string;
@@ -81,9 +84,11 @@ export async function buildFinancialContext(): Promise<FinancialContext | null> 
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
-  const [monthExpenses, allCategories] = await Promise.all([
+  const monthDateFilter = { gte: startOfMonth, lte: endOfMonth };
+
+  const [monthExpenses, inPeriodSimple, parceladasSpread] = await Promise.all([
     db.expense.findMany({
-      where: { familyId: family.id, date: { gte: startOfMonth, lte: endOfMonth } },
+      where: { familyId: family.id, date: monthDateFilter },
       orderBy: { amount: "desc" },
       include: {
         category: true,
@@ -91,10 +96,33 @@ export async function buildFinancialContext(): Promise<FinancialContext | null> 
         responsible: true,
       },
     }),
-    db.category.findMany({
-      where: { familyId: family.id },
-      include: {
-        expenses: { where: { date: { gte: startOfMonth, lte: endOfMonth } } },
+    db.expense.findMany({
+      where: {
+        familyId: family.id,
+        date: monthDateFilter,
+        OR: [
+          { type: { not: "parcelada" } },
+          { totalInstallments: null },
+          { totalInstallments: { lt: 2 } },
+        ],
+      },
+      select: {
+        amount: true,
+        type: true,
+        responsibleId: true,
+        categoryId: true,
+      },
+    }),
+    db.expense.findMany({
+      where: { familyId: family.id, type: "parcelada", totalInstallments: { gte: 2 } },
+      select: {
+        amount: true,
+        type: true,
+        responsibleId: true,
+        categoryId: true,
+        date: true,
+        currentInstallment: true,
+        totalInstallments: true,
       },
     }),
   ]);
@@ -103,21 +131,61 @@ export async function buildFinancialContext(): Promise<FinancialContext | null> 
     amount: number; type: string; responsibleId: string; name: string; date: Date;
     category: { name: string } | null; card: { name: string } | null; responsible: { name: string };
   };
-  type CatWithExpenses = { name: string; limitAmount: number; expenses: { amount: number }[] };
-  type FamilyMember = { userId: string; user: { name: string } };
+  type SimpleAgg = { amount: number; type: string; responsibleId: string; categoryId: string | null };
+  type SpreadAgg = SimpleAgg & {
+    date: Date;
+    currentInstallment: number | null;
+    totalInstallments: number | null;
+  };
+  type FamilyCategory = { id: string; name: string; limitAmount: number };
+  type FamilyMember = { userId: string; role: string; user: { name: string } };
 
-  const totalSpent = (monthExpenses as Expense[]).reduce((acc: number, e: Expense) => acc + e.amount, 0);
+  const categorySpendMap = new Map<string, number>();
+  const memberSpendMap = new Map<string, number>();
+  let totalSpent = 0;
+  let avulsa = 0;
+  let fixa = 0;
+  let parcelada = 0;
+
+  const addCat = (categoryId: string | null, value: number) => {
+    if (categoryId == null || value === 0) return;
+    categorySpendMap.set(categoryId, (categorySpendMap.get(categoryId) ?? 0) + value);
+  };
+
+  for (const e of inPeriodSimple as SimpleAgg[]) {
+    totalSpent += e.amount;
+    if (e.type === "fixa") fixa += e.amount;
+    else if (e.type === "parcelada") parcelada += e.amount;
+    else avulsa += e.amount;
+    memberSpendMap.set(e.responsibleId, (memberSpendMap.get(e.responsibleId) ?? 0) + e.amount);
+    addCat(e.categoryId, e.amount);
+  }
+
+  for (const e of parceladasSpread as SpreadAgg[]) {
+    const contrib = parceladaAmountInPeriod(
+      {
+        date: e.date,
+        amount: e.amount,
+        currentInstallment: e.currentInstallment,
+        totalInstallments: e.totalInstallments,
+      },
+      startOfMonth,
+      endOfMonth,
+    );
+    if (contrib === 0) continue;
+    totalSpent += contrib;
+    parcelada += contrib;
+    memberSpendMap.set(e.responsibleId, (memberSpendMap.get(e.responsibleId) ?? 0) + contrib);
+    addCat(e.categoryId, contrib);
+  }
+
   const budget = family.budget;
   const remaining = budget - totalSpent;
 
-  const typeBreakdown = {
-    avulsa: (monthExpenses as Expense[]).filter((e: Expense) => e.type === "avulsa").reduce((acc: number, e: Expense) => acc + e.amount, 0),
-    fixa: (monthExpenses as Expense[]).filter((e: Expense) => e.type === "fixa").reduce((acc: number, e: Expense) => acc + e.amount, 0),
-    parcelada: (monthExpenses as Expense[]).filter((e: Expense) => e.type === "parcelada").reduce((acc: number, e: Expense) => acc + e.amount, 0),
-  };
+  const typeBreakdown = { avulsa, fixa, parcelada };
 
-  const categories = (allCategories as CatWithExpenses[]).map((cat: CatWithExpenses) => {
-    const spent = cat.expenses.reduce((acc: number, e: { amount: number }) => acc + e.amount, 0);
+  const categories = (family.categories as FamilyCategory[]).map((cat: FamilyCategory) => {
+    const spent = categorySpendMap.get(cat.id) ?? 0;
     return {
       name: cat.name,
       spent,
@@ -131,9 +199,9 @@ export async function buildFinancialContext(): Promise<FinancialContext | null> 
     amount: e.amount,
     type: e.type,
     category: e.category?.name ?? "Sem categoria",
-    card: e.card?.name ?? "Sem cartão",
+    card: e.card?.name ?? "Sem pagamento",
     responsible: e.responsible.name,
-    date: new Date(e.date).toLocaleDateString("pt-BR"),
+    date: formatDateBrazil(e.date),
   }));
 
   const allExpensesThisMonth = (monthExpenses as Expense[]).map((e: Expense) => ({
@@ -141,15 +209,14 @@ export async function buildFinancialContext(): Promise<FinancialContext | null> 
     amount: e.amount,
     type: e.type,
     category: e.category?.name ?? "Sem categoria",
-    card: e.card?.name ?? "Sem cartão",
+    card: e.card?.name ?? "Sem pagamento",
     responsible: e.responsible.name,
-    date: new Date(e.date).toLocaleDateString("pt-BR"),
+    date: formatDateBrazil(e.date),
   }));
 
-  const members = (family.members as FamilyMember[]).map((m: FamilyMember) => {
-    const spent = (monthExpenses as Expense[])
-      .filter((e: Expense) => e.responsibleId === m.userId)
-      .reduce((acc: number, e: Expense) => acc + e.amount, 0);
+  const membersOrdered = sortMembersForBudgetDisplay([...(family.members as FamilyMember[])]);
+  const members = membersOrdered.map((m: FamilyMember) => {
+    const spent = memberSpendMap.get(m.userId) ?? 0;
     return {
       name: m.user.name,
       spent,

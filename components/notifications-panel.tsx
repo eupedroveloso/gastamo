@@ -251,7 +251,26 @@ export function NotificationsPanel({ open, onClose, onUpdate }: Props) {
                       <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-fg-default)", lineHeight: 1.4, marginBottom: 2 }}>
                         {n.title}
                       </div>
-                      <div style={{ fontSize: 12, color: "var(--color-fg-muted)", lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <div
+                        style={
+                          n.type === "weekly_report"
+                            ? {
+                                fontSize: 12,
+                                color: "var(--color-fg-muted)",
+                                lineHeight: 1.5,
+                                whiteSpace: "pre-wrap",
+                                wordBreak: "break-word",
+                              }
+                            : {
+                                fontSize: 12,
+                                color: "var(--color-fg-muted)",
+                                lineHeight: 1.4,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }
+                        }
+                      >
                         {n.description}
                       </div>
                       <div style={{ fontSize: 11, color: "var(--color-fg-subtle)", marginTop: 4 }}>

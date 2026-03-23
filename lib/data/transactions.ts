@@ -1,5 +1,6 @@
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { sortMembersForBudgetDisplay } from "@/lib/member-display-order";
 
 /** Dados da página de transações — módulo sem "use server" para uso em Server Components. */
 export async function getTransactionsData() {
@@ -23,7 +24,7 @@ export async function getTransactionsData() {
         pending: true, totalInstallments: true, currentInstallment: true, invoiceId: true,
         category: { select: { id: true, name: true } },
         responsible: { select: { id: true, name: true } },
-        card: { select: { id: true, name: true } },
+        card: { select: { id: true, name: true, image: true } },
       },
     }),
     db.category.findMany({
@@ -33,20 +34,22 @@ export async function getTransactionsData() {
     }),
     db.card.findMany({
       where: { familyId: fid },
-      select: { id: true, name: true },
+      select: { id: true, name: true, image: true, statementClosingDay: true, dueDayOffset: true },
       orderBy: { name: "asc" },
     }),
     db.familyMember.findMany({
       where: { familyId: fid },
-      select: { userId: true, user: { select: { id: true, name: true } } },
+      select: { userId: true, role: true, user: { select: { id: true, name: true } } },
     }),
   ]);
+
+  const membersSorted = sortMembersForBudgetDisplay(members);
 
   return {
     expenses,
     categories,
     cards,
-    members: members.map((m: { userId: string; user: { id: string; name: string } }) => ({
+    members: membersSorted.map((m: { userId: string; user: { id: string; name: string } }) => ({
       userId: m.userId,
       name: m.user.name,
     })),

@@ -33,7 +33,7 @@ export default async function SettingsPage() {
               orderBy: { createdAt: "asc" },
             },
             cards: {
-              select: { id: true, name: true },
+              select: { id: true, name: true, statementClosingDay: true, dueDayOffset: true, image: true },
               orderBy: { createdAt: "asc" },
             },
           },

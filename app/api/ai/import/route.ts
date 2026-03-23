@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AI_ENABLED } from "@/lib/config";
 import { getSession } from "@/lib/auth";
+import { getTodayBrazilYMD } from "@/lib/date-local";
 
 const SUPPORTED_TYPES = [
   "image/jpeg",
@@ -49,7 +50,7 @@ export async function POST(req: NextRequest) {
     const base64 = buffer.toString("base64");
     const dataUrl = `data:${file.type};base64,${base64}`;
 
-    const today = new Date().toISOString().split("T")[0];
+    const today = getTodayBrazilYMD();
 
     const prompt = `Analise este documento/imagem e extraia TODOS os gastos, compras ou transações listados.
 
@@ -73,7 +74,7 @@ Regras importantes:
   - "avulsa" → compra única, não recorrente
   - "fixa" → mensalidade, assinatura ou gasto que se repete todo mês
   - "parcelada" → compra dividida em parcelas
-- Se for fatura de cartão de crédito: extraia cada item/compra separadamente
+- Se for fatura ou extrato de cartão de crédito: extraia cada item/compra separadamente
 - Se for comprovante/recibo único: extraia como um único gasto com o valor total
 - Se for extrato bancário: extraia apenas os débitos (saídas), ignore créditos e estornos
 - Mantenha nomes originais dos estabelecimentos quando possível

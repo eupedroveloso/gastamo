@@ -21,7 +21,7 @@ export default function DashboardLayout({
       <main
         style={{
           flex: 1,
-          padding: "var(--space-16) var(--space-24) var(--space-16) 0",
+          padding: "var(--space-24) var(--space-24) var(--space-16) 0",
           minWidth: 0,
           display: "flex",
           flexDirection: "column",
@@ -32,7 +32,7 @@ export default function DashboardLayout({
           style={{
             background: "var(--color-bg-subtle)",
             borderRadius: "var(--radius-4xl)",
-            padding: "var(--space-24)",
+            padding: "var(--space-32) var(--space-24) var(--space-24)",
             flex: 1,
             display: "flex",
             flexDirection: "column",

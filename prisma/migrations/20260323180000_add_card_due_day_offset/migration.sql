@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Card" ADD COLUMN "dueDayOffset" INTEGER NOT NULL DEFAULT 7;
