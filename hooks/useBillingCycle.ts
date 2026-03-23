@@ -3,8 +3,9 @@
 import { useMemo, useState, useCallback } from "react";
 import { getBillingCycle, type BillingCycle } from "@/lib/billing-cycle";
 
+/** Cartão (ou fragmento) com dados de fatura — campos opcionais como nas props/API. */
 export type CardBillingInput = {
-  statementClosingDay: number | null | undefined;
+  statementClosingDay?: number | null | undefined;
   dueDayOffset?: number | null | undefined;
 };
 

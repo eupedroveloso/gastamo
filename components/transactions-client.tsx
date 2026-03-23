@@ -994,7 +994,7 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
                   borderTopStyle: "none" as const,
                   borderRightStyle: "none" as const,
                   borderLeftStyle: "none" as const,
-                  borderBottomStyle: showRowDivider ? ("solid" as const) : "none",
+                  borderBottomStyle: showRowDivider ? ("solid" as const) : ("none" as const),
                   borderBottomColor: showRowDivider ? "#F5F5F5" : "transparent",
                 };
                 return (
