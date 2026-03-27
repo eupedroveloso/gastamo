@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { parseExpenseDateString, parseLocalDateInput } from "@/lib/date-local";
+import { billingYmForParcelIndex, expenseDateForParcelRow } from "@/lib/billing-ym-advance";
+import { computeExpenseBillingYm, parseBillingYm } from "@/lib/expense-billing-ym";
 
 export type ExpenseState = { error?: string; success?: boolean } | null;
 
@@ -32,48 +34,53 @@ export async function createExpense(
   const amount =
     parseFloat(amountStr.replace(/\./g, "").replace(",", ".")) || 0;
 
-  const totalInstallments = type === "parcelada" && totalInstallmentsStr ? parseInt(totalInstallmentsStr) : null;
-  const currentInstallment = type === "parcelada" && currentInstallmentStr ? parseInt(currentInstallmentStr) : null;
+  const totalInstallments = type === "parcelada" && totalInstallmentsStr ? parseInt(totalInstallmentsStr, 10) : null;
+  const currentInstallment = type === "parcelada" && currentInstallmentStr ? parseInt(currentInstallmentStr, 10) : null;
+  const billingYmForm = parseBillingYm(formData.get("billingYm") as string | null);
 
   const familyMember = await db.familyMember.findFirst({
     where: { userId: session.userId },
   });
   if (!familyMember) return { error: "Família não encontrada" };
 
-  const expense = await db.expense.create({
-    data: {
-      name,
-      invoiceId: invoiceId || null,
-      date: parseLocalDateInput(dateStr),
-      amount,
-      type,
-      totalInstallments,
-      currentInstallment,
-      familyId: familyMember.familyId,
-      categoryId: categoryId || null,
-      responsibleId,
-      cardId: cardId || null,
-    },
-    include: { responsible: { select: { name: true } } },
-  });
+  const expenseDate = parseLocalDateInput(dateStr);
+  const cid = typeof cardId === "string" && cardId.trim() !== "" ? cardId.trim() : null;
+  const card = cid
+    ? await db.card.findFirst({
+        where: { id: cid, familyId: familyMember.familyId },
+        select: { statementClosingDay: true },
+      })
+    : null;
 
-  // Notificar outros integrantes da família (quem registrou não recebe)
+  const shouldSpreadParcels =
+    type === "parcelada" &&
+    totalInstallments != null &&
+    totalInstallments >= 2 &&
+    (currentInstallment ?? 1) === 1 &&
+    billingYmForm != null;
+
+  const responsibleRow = await db.user.findFirst({
+    where: { id: responsibleId },
+    select: { name: true },
+  });
+  const responsibleLabel = responsibleRow?.name ?? "—";
+
   const otherMembers = await db.familyMember.findMany({
     where: { familyId: familyMember.familyId, userId: { not: session.userId } },
     select: { userId: true },
   });
-  if (otherMembers.length > 0) {
-    const amountFmt = amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-    const responsibleLabel = expense.responsible.name;
+
+  const notifyCreated = async (payload: { expenseId?: string; description: string }) => {
+    if (otherMembers.length === 0) return;
     try {
       await db.notification.createMany({
         data: otherMembers.map((m) => ({
           userId: m.userId,
           type: "expense_added",
           title: `Gasto adicionado — ${responsibleLabel}`,
-          description: `${responsibleLabel} registrou: ${name} · ${amountFmt}`,
+          description: payload.description,
           metadata: JSON.stringify({
-            expenseId: expense.id,
+            expenseId: payload.expenseId,
             responsibleName: responsibleLabel,
             expenseName: name,
           }),
@@ -82,6 +89,57 @@ export async function createExpense(
     } catch (e) {
       console.error("[createExpense] falha ao criar notificações (gasto salvo):", e);
     }
+  };
+
+  if (shouldSpreadParcels && totalInstallments) {
+    const firstYm = billingYmForm;
+    const rows = Array.from({ length: totalInstallments }, (_, i) => {
+      const ym = billingYmForParcelIndex(firstYm, card, i);
+      const rowDate = expenseDateForParcelRow(i, expenseDate, ym, card);
+      return {
+        name,
+        invoiceId: invoiceId || null,
+        date: rowDate,
+        billingYm: ym,
+        amount,
+        type: "parcelada" as const,
+        totalInstallments,
+        currentInstallment: i + 1,
+        familyId: familyMember.familyId,
+        categoryId: categoryId || null,
+        responsibleId,
+        cardId: cid,
+      };
+    });
+    await db.expense.createMany({ data: rows });
+    const amountFmt = amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    await notifyCreated({
+      description: `${responsibleLabel} registrou: ${name} · ${totalInstallments}x de ${amountFmt}/parcela (faturas seguintes)`,
+    });
+  } else {
+    const billingYm = billingYmForm ?? computeExpenseBillingYm(expenseDate, card);
+    const expense = await db.expense.create({
+      data: {
+        name,
+        invoiceId: invoiceId || null,
+        date: expenseDate,
+        billingYm,
+        amount,
+        type,
+        totalInstallments,
+        currentInstallment,
+        familyId: familyMember.familyId,
+        categoryId: categoryId || null,
+        responsibleId,
+        cardId: cid,
+      },
+      include: { responsible: { select: { name: true } } },
+    });
+    const amountFmt = amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    await notifyCreated({
+      expenseId: expense.id,
+      description: `${expense.responsible.name} registrou: ${name} · ${amountFmt}`,
+    });
   }
 
   revalidatePath("/");
@@ -118,12 +176,35 @@ export async function updateExpense(
   const totalInstallments = type === "parcelada" && totalInstallmentsStr ? parseInt(totalInstallmentsStr) : null;
   const currentInstallment = type === "parcelada" && currentInstallmentStr ? parseInt(currentInstallmentStr) : null;
 
+  const familyMember = await db.familyMember.findFirst({
+    where: { userId: session.userId },
+  });
+  if (!familyMember) return { error: "Família não encontrada" };
+
+  const owned = await db.expense.findFirst({
+    where: { id: expenseId, familyId: familyMember.familyId },
+    select: { id: true },
+  });
+  if (!owned) return { error: "Gasto não encontrado" };
+
+  const expenseDate = parseLocalDateInput(dateStr);
+  const cid = typeof cardId === "string" && cardId.trim() !== "" ? cardId.trim() : null;
+  const card = cid
+    ? await db.card.findFirst({
+        where: { id: cid, familyId: familyMember.familyId },
+        select: { statementClosingDay: true },
+      })
+    : null;
+  const billingYmForm = parseBillingYm(formData.get("billingYm") as string | null);
+  const billingYm = billingYmForm ?? computeExpenseBillingYm(expenseDate, card);
+
   await db.expense.update({
     where: { id: expenseId },
     data: {
       name,
       invoiceId: invoiceId || null,
-      date: parseLocalDateInput(dateStr),
+      date: expenseDate,
+      billingYm,
       amount,
       type,
       totalInstallments,
@@ -131,7 +212,7 @@ export async function updateExpense(
       pending: false,
       categoryId: categoryId || null,
       responsibleId,
-      cardId: cardId || null,
+      cardId: cid,
     },
   });
 
@@ -224,18 +305,33 @@ export async function bulkCreateExpenses(
   });
   if (!member) return { error: "Família não encontrada" };
 
+  const ids = [...new Set(expenses.map((e) => e.cardId).filter((x): x is string => Boolean(x)))];
+  const cards = ids.length
+    ? await db.card.findMany({
+        where: { familyId: member.familyId, id: { in: ids } },
+        select: { id: true, statementClosingDay: true },
+      })
+    : [];
+  const cardById = new Map(cards.map((c) => [c.id, c]));
+
   await db.expense.createMany({
-    data: expenses.map((e: { name: string; amount: number; date: string; type: string; categoryId?: string; responsibleId: string; cardId?: string }) => ({
-      name: e.name,
-      amount: e.amount,
-      date: parseExpenseDateString(e.date),
-      type: e.type,
-      pending: true,
-      familyId: member.familyId,
-      categoryId: e.categoryId || null,
-      responsibleId: e.responsibleId,
-      cardId: e.cardId || null,
-    })),
+    data: expenses.map((e: { name: string; amount: number; date: string; type: string; categoryId?: string; responsibleId: string; cardId?: string }) => {
+      const d = parseExpenseDateString(e.date);
+      const cid = e.cardId && e.cardId.trim() !== "" ? e.cardId.trim() : null;
+      const card = cid ? cardById.get(cid) ?? null : null;
+      return {
+        name: e.name,
+        amount: e.amount,
+        date: d,
+        billingYm: computeExpenseBillingYm(d, card),
+        type: e.type,
+        pending: true,
+        familyId: member.familyId,
+        categoryId: e.categoryId || null,
+        responsibleId: e.responsibleId,
+        cardId: cid,
+      };
+    }),
   });
 
   revalidatePath("/transactions");

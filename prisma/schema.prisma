@@ -82,6 +82,8 @@ model Expense {
   id                 String   @id @default(cuid())
   name               String
   invoiceId          String?
+  /// Referência da fatura (YYYY-MM): mês do fechamento do ciclo em que o gasto entra (cartão com fechamento), ou mês civil da data (sem cartão / sem fechamento).
+  billingYm          String   @default("2000-01")
   amount             Float
   date               DateTime
   type               String   @default("avulsa")

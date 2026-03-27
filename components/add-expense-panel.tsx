@@ -11,7 +11,7 @@ interface Props {
   open: boolean;
   onClose: () => void;
   categories: { id: string; name: string }[];
-  cards: { id: string; name: string }[];
+  cards: { id: string; name: string; statementClosingDay?: number | null }[];
   members: { userId: string; name: string }[];
 }
 
@@ -83,6 +83,11 @@ const inputStyle = {
   color: "var(--color-fg-default)",
 } as const;
 
+const selectResetStyle = {
+  WebkitAppearance: "none" as const,
+  appearance: "none" as const,
+};
+
 const linkBtnStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
@@ -101,6 +106,9 @@ const linkBtnStyle: CSSProperties = {
 export function AddExpensePanel({ open, onClose, categories, cards, members }: Props) {
   const [state, formAction, isPending] = useActionState(createExpense, null);
   const [selectedType, setSelectedType] = useState("avulsa");
+  const [installments, setInstallments] = useState("12");
+  const [currentInst, setCurrentInst] = useState("1");
+  const [billingYm, setBillingYm] = useState("");
   const [selectedDate, setSelectedDate] = useState("");
   const [localCategories, setLocalCategories] = useState(categories);
   const [localCards, setLocalCards] = useState(cards);
@@ -134,6 +142,10 @@ export function AddExpensePanel({ open, onClose, categories, cards, members }: P
       setNewCardName("");
       setNewCategoryErr(null);
       setNewCardErr(null);
+      setSelectedType("avulsa");
+      setInstallments("12");
+      setCurrentInst("1");
+      setBillingYm("");
     }
     wasOpen.current = open;
   }, [open]);
@@ -178,6 +190,7 @@ export function AddExpensePanel({ open, onClose, categories, cards, members }: P
           }}
         >
           <input type="hidden" name="date" value={selectedDate} />
+          <input type="hidden" name="billingYm" value={billingYm} />
           <div
             style={{
               padding: "var(--space-32)",
@@ -260,11 +273,32 @@ export function AddExpensePanel({ open, onClose, categories, cards, members }: P
                 </div>
               </FormField>
 
-              <FormField label="Data do Gasto">
+              <FormField
+                label="Data da compra"
+                helperText="Só para referência; totais e filtros usam a fatura (competência)."
+              >
                 <Calendar
                   value={selectedDate}
                   onChange={setSelectedDate}
                   placeholder="Selecione a data"
+                />
+              </FormField>
+
+              <FormField
+                label="Fatura (competência)"
+                helperText={
+                  selectedType === "parcelada" &&
+                  billingYm &&
+                  parseInt(currentInst, 10) === 1
+                    ? `Serão criados ${installments} lançamentos parcelados, um em cada fatura seguinte.`
+                    : "Opcional. Mês em que o gasto entra na fatura. Vazio = calcular pela data e pelo cartão."
+                }
+              >
+                <Calendar
+                  value={billingYm ? `${billingYm}-01` : ""}
+                  onChange={(ds) => setBillingYm(ds ? ds.slice(0, 7) : "")}
+                  placeholder="Mês da fatura (opcional)"
+                  competenceMonthLabel
                 />
               </FormField>
 
@@ -310,6 +344,46 @@ export function AddExpensePanel({ open, onClose, categories, cards, members }: P
                   })}
                 </div>
               </FormField>
+
+              {selectedType === "parcelada" && (
+                <div style={{ display: "flex", gap: "var(--space-8)" }}>
+                  <FormField label="Total de Parcelas">
+                    <div style={fieldStyle}>
+                      <select
+                        name="totalInstallments"
+                        value={installments}
+                        onChange={(e) => {
+                          setInstallments(e.target.value);
+                          if (parseInt(currentInst, 10) > parseInt(e.target.value, 10)) {
+                            setCurrentInst(e.target.value);
+                          }
+                        }}
+                        style={{ ...inputStyle, cursor: "pointer", ...selectResetStyle }}
+                      >
+                        {Array.from({ length: 48 }, (_, i) => i + 1).map((n) => (
+                          <option key={n} value={n}>{n}x</option>
+                        ))}
+                      </select>
+                      <ChevronDownIcon size={16} color="var(--color-fg-subtle)" />
+                    </div>
+                  </FormField>
+                  <FormField label="Parcela Atual">
+                    <div style={fieldStyle}>
+                      <select
+                        name="currentInstallment"
+                        value={currentInst}
+                        onChange={(e) => setCurrentInst(e.target.value)}
+                        style={{ ...inputStyle, cursor: "pointer", ...selectResetStyle }}
+                      >
+                        {Array.from({ length: parseInt(installments, 10) || 1 }, (_, i) => i + 1).map((n) => (
+                          <option key={n} value={n}>{n}/{installments}</option>
+                        ))}
+                      </select>
+                      <ChevronDownIcon size={16} color="var(--color-fg-subtle)" />
+                    </div>
+                  </FormField>
+                </div>
+              )}
 
               <FormField label="Categoria">
                 <div style={fieldStyle}>

@@ -18,9 +18,9 @@ export async function getTransactionsData() {
   const [expenses, categories, cards, members] = await Promise.all([
     db.expense.findMany({
       where: { familyId: fid },
-      orderBy: { date: "desc" },
+      orderBy: [{ billingYm: "desc" }, { date: "desc" }],
       select: {
-        id: true, name: true, amount: true, date: true, type: true,
+        id: true, name: true, amount: true, date: true, type: true, billingYm: true,
         pending: true, totalInstallments: true, currentInstallment: true, invoiceId: true,
         category: { select: { id: true, name: true } },
         responsible: { select: { id: true, name: true } },

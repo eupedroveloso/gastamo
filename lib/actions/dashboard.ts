@@ -1,8 +1,7 @@
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { formatDateBrazil } from "@/lib/date-local";
-import { parseDashboardPeriodParams } from "@/lib/dashboard-period";
-import { parceladaAmountInPeriod } from "@/lib/parcelada-in-period";
+import { resolveDashboardBillingPeriod } from "@/lib/dashboard-period";
+import { LEGACY_EXPENSE_BILLING_YM } from "@/lib/expense-billing-ym";
 import { sortMembersForBudgetDisplay } from "@/lib/member-display-order";
 
 export type DashboardQueryParams = {
@@ -39,8 +38,9 @@ export async function getDashboardData(params: DashboardQueryParams = {}) {
     },
   });
 
-  const period = parseDashboardPeriodParams(params.from, params.to);
-  const dateFilter = { gte: period.start, lte: period.end };
+  const period = resolveDashboardBillingPeriod(params.from, params.to);
+  const billingYmFilter = { gte: period.ymFrom, lte: period.ymTo };
+  const dateFilterCivil = { gte: period.start, lte: period.end };
 
   if (!familyMember) {
     return {
@@ -49,8 +49,8 @@ export async function getDashboardData(params: DashboardQueryParams = {}) {
       expenses: [],
       totalSpent: 0,
       daysInMonth: period.daysInPeriod,
-      period: { from: period.from, to: period.to },
-      periodLabel: `${formatDateBrazil(period.start)} – ${formatDateBrazil(period.end)}`,
+      period: { from: period.from, to: period.to, ymFrom: period.ymFrom, ymTo: period.ymTo },
+      periodLabel: period.periodLabel,
       categories: [],
       cards: [],
       spendByPayment: [],
@@ -62,47 +62,34 @@ export async function getDashboardData(params: DashboardQueryParams = {}) {
   const family = familyMember.family;
   const familyId = family.id;
 
-  const [expenses, inPeriodSimple, parceladasSpread, categories, cards] = await Promise.all([
+  const expenseWhereInPeriod = {
+    familyId,
+    OR: [
+      { billingYm: billingYmFilter },
+      { billingYm: LEGACY_EXPENSE_BILLING_YM, date: dateFilterCivil },
+    ],
+  };
+
+  const [expenses, inPeriodRows, categories, cards] = await Promise.all([
     db.expense.findMany({
-      where: { familyId, date: dateFilter },
-      orderBy: { date: "desc" },
+      where: expenseWhereInPeriod,
+      orderBy: [{ billingYm: "desc" }, { date: "desc" }],
       take: 5,
       select: {
-        id: true, name: true, amount: true, date: true,
+        id: true, name: true, amount: true, date: true, billingYm: true,
         category: { select: { id: true, name: true } },
         responsible: { select: { id: true, name: true } },
         card: { select: { id: true, name: true, image: true } },
       },
     }),
     db.expense.findMany({
-      where: {
-        familyId,
-        date: dateFilter,
-        OR: [
-          { type: { not: "parcelada" } },
-          { totalInstallments: null },
-          { totalInstallments: { lt: 2 } },
-        ],
-      },
+      where: expenseWhereInPeriod,
       select: {
         amount: true,
         type: true,
         responsibleId: true,
         categoryId: true,
         cardId: true,
-      },
-    }),
-    db.expense.findMany({
-      where: { familyId, type: "parcelada", totalInstallments: { gte: 2 } },
-      select: {
-        amount: true,
-        type: true,
-        responsibleId: true,
-        categoryId: true,
-        cardId: true,
-        date: true,
-        currentInstallment: true,
-        totalInstallments: true,
       },
     }),
     db.category.findMany({
@@ -122,17 +109,10 @@ export async function getDashboardData(params: DashboardQueryParams = {}) {
     categoryId: string | null;
     cardId: string | null;
   };
-  type SpreadRow = SimpleRow & {
-    date: Date;
-    currentInstallment: number | null;
-    totalInstallments: number | null;
-  };
   type CategoryRow = { id: string; name: string; limitAmount: number };
   type Member = { userId: string; role: string; budget: number | null; user: { name: string; avatar: string | null } };
 
   const daysInMonth = period.daysInPeriod;
-  const pStart = period.start;
-  const pEnd = period.end;
 
   let totalSpent = 0;
   let avulsa = 0;
@@ -149,7 +129,7 @@ export async function getDashboardData(params: DashboardQueryParams = {}) {
     map.set(key, (map.get(key) ?? 0) + value);
   };
 
-  for (const e of inPeriodSimple as SimpleRow[]) {
+  for (const e of inPeriodRows as SimpleRow[]) {
     totalSpent += e.amount;
     if (e.type === "fixa") fixa += e.amount;
     else if (e.type === "parcelada") parcelada += e.amount;
@@ -157,25 +137,6 @@ export async function getDashboardData(params: DashboardQueryParams = {}) {
     memberSpendMap.set(e.responsibleId, (memberSpendMap.get(e.responsibleId) ?? 0) + e.amount);
     addToMap(categorySpendMap, e.categoryId, e.amount);
     cardSpendMap.set(e.cardId, (cardSpendMap.get(e.cardId) ?? 0) + e.amount);
-  }
-
-  for (const e of parceladasSpread as SpreadRow[]) {
-    const contrib = parceladaAmountInPeriod(
-      {
-        date: e.date,
-        amount: e.amount,
-        currentInstallment: e.currentInstallment,
-        totalInstallments: e.totalInstallments,
-      },
-      pStart,
-      pEnd,
-    );
-    if (contrib === 0) continue;
-    totalSpent += contrib;
-    parcelada += contrib;
-    memberSpendMap.set(e.responsibleId, (memberSpendMap.get(e.responsibleId) ?? 0) + contrib);
-    addToMap(categorySpendMap, e.categoryId, contrib);
-    cardSpendMap.set(e.cardId, (cardSpendMap.get(e.cardId) ?? 0) + contrib);
   }
 
   const categoriesWithStats = (categories as CategoryRow[]).map((cat: CategoryRow) => {
@@ -227,8 +188,8 @@ export async function getDashboardData(params: DashboardQueryParams = {}) {
     expenses,
     totalSpent,
     daysInMonth,
-    period: { from: period.from, to: period.to },
-    periodLabel: `${formatDateBrazil(period.start)} – ${formatDateBrazil(period.end)}`,
+    period: { from: period.from, to: period.to, ymFrom: period.ymFrom, ymTo: period.ymTo },
+    periodLabel: period.periodLabel,
     categories: categoriesWithStats,
     cards,
     spendByPayment,

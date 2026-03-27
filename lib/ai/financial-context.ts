@@ -2,8 +2,8 @@
 
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
-import { formatDateBrazil } from "@/lib/date-local";
-import { parceladaAmountInPeriod } from "@/lib/parcelada-in-period";
+import { formatDateBrazil, getTodayBrazilYMD } from "@/lib/date-local";
+import { brazilCivilMonthDateRangeFromBillingYm, LEGACY_EXPENSE_BILLING_YM } from "@/lib/expense-billing-ym";
 import { sortMembersForBudgetDisplay } from "@/lib/member-display-order";
 
 export interface FinancialContext {
@@ -80,15 +80,24 @@ export async function buildFinancialContext(): Promise<FinancialContext | null> 
   if (!member) return null;
 
   const family = member.family;
-  const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+  const todayYmd = getTodayBrazilYMD();
+  const currentBillingYm = todayYmd.slice(0, 7);
+  const monthIndex = parseInt(todayYmd.slice(5, 7), 10) - 1;
+  const currentYear = parseInt(todayYmd.slice(0, 4), 10);
 
-  const monthDateFilter = { gte: startOfMonth, lte: endOfMonth };
+  const { start: civilMonthStart, end: civilMonthEnd } =
+    brazilCivilMonthDateRangeFromBillingYm(currentBillingYm);
+  const aiPeriodWhere = {
+    familyId: family.id,
+    OR: [
+      { billingYm: currentBillingYm },
+      { billingYm: LEGACY_EXPENSE_BILLING_YM, date: { gte: civilMonthStart, lte: civilMonthEnd } },
+    ],
+  };
 
-  const [monthExpenses, inPeriodSimple, parceladasSpread] = await Promise.all([
+  const [monthExpenses, inPeriodRows] = await Promise.all([
     db.expense.findMany({
-      where: { familyId: family.id, date: monthDateFilter },
+      where: aiPeriodWhere,
       orderBy: { amount: "desc" },
       include: {
         category: true,
@@ -97,32 +106,12 @@ export async function buildFinancialContext(): Promise<FinancialContext | null> 
       },
     }),
     db.expense.findMany({
-      where: {
-        familyId: family.id,
-        date: monthDateFilter,
-        OR: [
-          { type: { not: "parcelada" } },
-          { totalInstallments: null },
-          { totalInstallments: { lt: 2 } },
-        ],
-      },
+      where: aiPeriodWhere,
       select: {
         amount: true,
         type: true,
         responsibleId: true,
         categoryId: true,
-      },
-    }),
-    db.expense.findMany({
-      where: { familyId: family.id, type: "parcelada", totalInstallments: { gte: 2 } },
-      select: {
-        amount: true,
-        type: true,
-        responsibleId: true,
-        categoryId: true,
-        date: true,
-        currentInstallment: true,
-        totalInstallments: true,
       },
     }),
   ]);
@@ -132,11 +121,6 @@ export async function buildFinancialContext(): Promise<FinancialContext | null> 
     category: { name: string } | null; card: { name: string } | null; responsible: { name: string };
   };
   type SimpleAgg = { amount: number; type: string; responsibleId: string; categoryId: string | null };
-  type SpreadAgg = SimpleAgg & {
-    date: Date;
-    currentInstallment: number | null;
-    totalInstallments: number | null;
-  };
   type FamilyCategory = { id: string; name: string; limitAmount: number };
   type FamilyMember = { userId: string; role: string; user: { name: string } };
 
@@ -152,31 +136,13 @@ export async function buildFinancialContext(): Promise<FinancialContext | null> 
     categorySpendMap.set(categoryId, (categorySpendMap.get(categoryId) ?? 0) + value);
   };
 
-  for (const e of inPeriodSimple as SimpleAgg[]) {
+  for (const e of inPeriodRows as SimpleAgg[]) {
     totalSpent += e.amount;
     if (e.type === "fixa") fixa += e.amount;
     else if (e.type === "parcelada") parcelada += e.amount;
     else avulsa += e.amount;
     memberSpendMap.set(e.responsibleId, (memberSpendMap.get(e.responsibleId) ?? 0) + e.amount);
     addCat(e.categoryId, e.amount);
-  }
-
-  for (const e of parceladasSpread as SpreadAgg[]) {
-    const contrib = parceladaAmountInPeriod(
-      {
-        date: e.date,
-        amount: e.amount,
-        currentInstallment: e.currentInstallment,
-        totalInstallments: e.totalInstallments,
-      },
-      startOfMonth,
-      endOfMonth,
-    );
-    if (contrib === 0) continue;
-    totalSpent += contrib;
-    parcelada += contrib;
-    memberSpendMap.set(e.responsibleId, (memberSpendMap.get(e.responsibleId) ?? 0) + contrib);
-    addCat(e.categoryId, contrib);
   }
 
   const budget = family.budget;
@@ -232,8 +198,8 @@ export async function buildFinancialContext(): Promise<FinancialContext | null> 
   return {
     userName: session.user.name.split(" ")[0],
     familyName: family.name,
-    currentMonth: monthNames[now.getMonth()],
-    currentYear: now.getFullYear(),
+    currentMonth: monthNames[monthIndex],
+    currentYear,
     budget,
     totalSpentThisMonth: totalSpent,
     remainingBudget: remaining,

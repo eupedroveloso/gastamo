@@ -12,24 +12,22 @@ import {
   UploadIcon,
 } from "./icons";
 import { createExpense, updateExpense, deleteExpense, bulkDeleteExpenses } from "@/lib/actions/expenses";
-import { formatDateBrazil, toBrazilCalendarYMD } from "@/lib/date-local";
-import { parceladaIntersectsYmdRange } from "@/lib/parcelada-in-period";
+import { formatDateBrazil, getTodayBrazilYMD, toBrazilCalendarYMD } from "@/lib/date-local";
+import { billingYmRangeFromYmd, formatBillingYmShort, LEGACY_EXPENSE_BILLING_YM } from "@/lib/expense-billing-ym";
 import { useBillingCycle } from "@/hooks/useBillingCycle";
 import { BillingCyclePicker } from "./billing-cycle-picker";
 import { ExpenseImportPanel } from "./expense-import-panel";
 import { Calendar, CalendarRange } from "./calendar";
 import { PaymentCardThumbnail } from "./payment-card-thumbnail";
 
-function getCurrentMonthRange(): { start: string; end: string } {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = now.getMonth();
-  const lastDay = new Date(y, m + 1, 0).getDate();
+/** Intervalo civil do mês de competência atual (BRT) — filtro lista gastos por `billingYm`. */
+function getDefaultFaturaMonthCivilRange(): { start: string; end: string } {
+  const ymd = getTodayBrazilYMD();
+  const y = parseInt(ymd.slice(0, 4), 10);
+  const m = parseInt(ymd.slice(5, 7), 10);
+  const lastDay = new Date(y, m, 0).getDate();
   const pad = (n: number) => String(n).padStart(2, "0");
-  return {
-    start: `${y}-${pad(m + 1)}-01`,
-    end: `${y}-${pad(m + 1)}-${pad(lastDay)}`,
-  };
+  return { start: `${y}-${pad(m)}-01`, end: `${y}-${pad(m)}-${pad(lastDay)}` };
 }
 
 type Expense = {
@@ -37,6 +35,7 @@ type Expense = {
   name: string;
   amount: number;
   date: Date;
+  billingYm: string;
   type: string;
   pending: boolean;
   totalInstallments: number | null;
@@ -123,13 +122,26 @@ const selectResetStyle = {
   appearance: "none" as const,
 };
 
-function FormField({ label, children }: { label: string; children: React.ReactNode }) {
+function FormField({
+  label,
+  children,
+  helperText,
+}: {
+  label: string;
+  children: React.ReactNode;
+  helperText?: string;
+}) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
       <label style={{ fontWeight: 600, fontSize: 12, color: "var(--color-fg-muted)", lineHeight: 1.5 }}>
         {label}
       </label>
       {children}
+      {helperText && (
+        <span style={{ fontWeight: 400, fontSize: 10, color: "var(--color-fg-subtle)", lineHeight: 1.45 }}>
+          {helperText}
+        </span>
+      )}
     </div>
   );
 }
@@ -156,6 +168,11 @@ function ExpenseForm({
   const [selectedType, setSelectedType] = useState(expense?.type ?? "avulsa");
   const [installments, setInstallments] = useState(String(expense?.totalInstallments ?? "12"));
   const [currentInst, setCurrentInst] = useState(String(expense?.currentInstallment ?? "1"));
+  const [billingYm, setBillingYm] = useState(() => {
+    if (!expense?.billingYm) return "";
+    if (expense.billingYm === LEGACY_EXPENSE_BILLING_YM) return "";
+    return expense.billingYm;
+  });
   const [selectedDate, setSelectedDate] = useState(
     expense ? toBrazilCalendarYMD(expense.date) : ""
   );
@@ -171,6 +188,7 @@ function ExpenseForm({
     >
       {expense && <input type="hidden" name="expenseId" value={expense.id} />}
       <input type="hidden" name="date" value={selectedDate} />
+      <input type="hidden" name="billingYm" value={billingYm} />
 
       <div
         style={{
@@ -319,11 +337,33 @@ function ExpenseForm({
             </div>
           </FormField>
 
-          <FormField label="Data do Gasto">
+          <FormField
+            label="Data da compra"
+            helperText="Só para referência; totais e filtros usam a fatura (competência)."
+          >
             <Calendar
               value={selectedDate}
               onChange={setSelectedDate}
               placeholder="Selecione a data"
+            />
+          </FormField>
+
+          <FormField
+            label="Fatura (competência)"
+            helperText={
+              !expense &&
+              selectedType === "parcelada" &&
+              billingYm &&
+              parseInt(currentInst, 10) === 1
+                ? `Serão criados ${installments} lançamentos parcelados, um em cada fatura seguinte.`
+                : "Opcional. Mês em que o gasto entra na fatura. Vazio = calcular pela data e pelo cartão."
+            }
+          >
+            <Calendar
+              value={billingYm ? `${billingYm}-01` : ""}
+              onChange={(ds) => setBillingYm(ds ? ds.slice(0, 7) : "")}
+              placeholder="Mês da fatura (opcional)"
+              competenceMonthLabel
             />
           </FormField>
 
@@ -406,12 +446,12 @@ function SlidePanel({ children, onClose }: { children: React.ReactNode; onClose:
   );
 }
 
-// Column config matching Figma
-const COL_TEMPLATE = "32px minmax(150px, 2fr) 112px 112px 136px 112px 112px 112px 68px";
+// Colunas: … responsável | fatura (competência) | data documental | valor | ações
+const COL_TEMPLATE = "32px minmax(150px, 2fr) 112px 112px 136px 112px 88px 96px 112px 68px";
 
 export function TransactionsClient({ expenses, categories, cards, members }: Props) {
   const [search, setSearch] = useState("");
-  const defaultRange = getCurrentMonthRange();
+  const defaultRange = getDefaultFaturaMonthCivilRange();
   const [dateStart, setDateStart] = useState(defaultRange.start);
   const [dateEnd, setDateEnd] = useState(defaultRange.end);
   const [showFilterPanel, setShowFilterPanel] = useState(false);
@@ -476,7 +516,7 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
   const filtered = useMemo(() => {
     const raw = search.trim();
     const q = raw.toLowerCase();
-    return expenses.filter((e) => {
+    const list = expenses.filter((e) => {
       if (q) {
         const inName = e.name.toLowerCase().includes(q);
         const inInvoice = e.invoiceId?.toLowerCase().includes(q) ?? false;
@@ -487,45 +527,20 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
       }
       if (useBillingPeriodFilter && cycle) {
         if (e.card?.id !== filterCard) return false;
-        const cStart = toBrazilCalendarYMD(cycle.startDate);
-        const cEnd = toBrazilCalendarYMD(cycle.endDate);
-        const isSpreadParcelada = e.type === "parcelada" && (e.totalInstallments ?? 0) >= 2;
-        if (isSpreadParcelada) {
-          if (
-            !parceladaIntersectsYmdRange(
-              new Date(e.date),
-              e.currentInstallment,
-              e.totalInstallments,
-              cStart,
-              cEnd,
-            )
-          ) {
-            return false;
-          }
-        } else {
+        const targetYm = toBrazilCalendarYMD(cycle.endDate).slice(0, 7);
+        if (e.billingYm === LEGACY_EXPENSE_BILLING_YM) {
           const expDate = toBrazilCalendarYMD(e.date);
+          const cStart = toBrazilCalendarYMD(cycle.startDate);
+          const cEnd = toBrazilCalendarYMD(cycle.endDate);
           if (expDate < cStart || expDate > cEnd) return false;
-        }
+        } else if (e.billingYm !== targetYm) return false;
       } else if (dateStart || dateEnd) {
-        const isSpreadParcelada =
-          e.type === "parcelada" && (e.totalInstallments ?? 0) >= 2;
-        if (isSpreadParcelada) {
-          if (
-            !parceladaIntersectsYmdRange(
-              new Date(e.date),
-              e.currentInstallment,
-              e.totalInstallments,
-              dateStart,
-              dateEnd,
-            )
-          ) {
-            return false;
-          }
-        } else {
+        const { ymFrom, ymTo } = billingYmRangeFromYmd(dateStart || dateEnd, dateEnd || dateStart);
+        if (e.billingYm === LEGACY_EXPENSE_BILLING_YM) {
           const expDate = toBrazilCalendarYMD(e.date);
           if (dateStart && expDate < dateStart) return false;
           if (dateEnd && expDate > dateEnd) return false;
-        }
+        } else if (e.billingYm < ymFrom || e.billingYm > ymTo) return false;
       }
       if (filterType && e.type !== filterType) return false;
       if (filterCategory && e.category?.id !== filterCategory) return false;
@@ -533,6 +548,11 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
       if (filterMember && e.responsible.id !== filterMember) return false;
       return true;
     });
+    list.sort((a, b) => {
+      if (a.billingYm !== b.billingYm) return b.billingYm.localeCompare(a.billingYm);
+      return new Date(b.date).getTime() - new Date(a.date).getTime();
+    });
+    return list;
   }, [
     expenses,
     search,
@@ -580,7 +600,7 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
           }}
         >
           <span style={{ fontWeight: 400, fontSize: 16, color: "#0A0A0A", whiteSpace: "nowrap", lineHeight: 1.5 }}>
-            Lista de Gastos
+            Gastos por fatura
           </span>
 
           <div
@@ -654,7 +674,7 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
                   setDateStart(s);
                   setDateEnd(e);
                 }}
-                placeholder="Período"
+                placeholder="Competência (faturas)"
               />
             )}
 
@@ -938,7 +958,7 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
           <span style={{ fontWeight: 600, fontSize: 14, color: "#0A0A0A", lineHeight: 1.5 }}>
             Nome do Gasto
           </span>
-          {["Tipo", "Categoria", "Cartão", "Responsável", "Data", "Valor"].map((col) => (
+          {["Tipo", "Categoria", "Cartão", "Responsável", "Fatura", "Data (doc.)", "Valor"].map((col) => (
             <span key={col} style={{ fontWeight: 300, fontSize: 14, color: "#0A0A0A", lineHeight: 1.5, textAlign: "center" }}>
               {col}
             </span>
@@ -1085,8 +1105,13 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
                       {expense.responsible.name.split(" ")[0]}
                     </span>
 
-                    {/* Date */}
-                    <span style={{ fontSize: 12, fontWeight: 400, color: "#0A0A0A", textAlign: "center", lineHeight: 1.5, letterSpacing: "0.02em" }}>
+                    {/* Fatura (competência) */}
+                    <span style={{ fontSize: 12, fontWeight: 600, color: "#0F8F4E", textAlign: "center", lineHeight: 1.5, letterSpacing: "0.02em" }}>
+                      {formatBillingYmShort(expense.billingYm)}
+                    </span>
+
+                    {/* Data documental */}
+                    <span style={{ fontSize: 11, fontWeight: 400, color: "#737373", textAlign: "center", lineHeight: 1.5, letterSpacing: "0.02em" }}>
                       {formatDateBrazil(expense.date)}
                     </span>
 

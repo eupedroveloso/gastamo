@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getTodayBrazilYMD } from "@/lib/date-local";
+import { brazilCivilMonthDateRangeFromBillingYm, LEGACY_EXPENSE_BILLING_YM } from "@/lib/expense-billing-ym";
 
 /** Fuso para rótulos do relatório (Brasil sem horário de verão). */
 const TZ = "America/Sao_Paulo";
@@ -15,20 +17,24 @@ function buildFallbackWeeklySummary(params: {
   budget: number;
   memberBreakdown: string;
   topCategories: string;
+  billingYmLabel: string;
 }): string {
   const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-  const { familyName, totalSpent, expenseCount, budget, memberBreakdown, topCategories } = params;
-  const p1 = `Olá! Este é o resumo semanal da família "${familyName}". No período foram registrados ${expenseCount} gasto${expenseCount !== 1 ? "s" : ""}, totalizando ${fmt(totalSpent)}.`;
+  const { familyName, totalSpent, expenseCount, budget, memberBreakdown, topCategories, billingYmLabel } = params;
+  const p1 = `Olá! Este é o resumo semanal da família "${familyName}". No mês de referência da fatura ${billingYmLabel} há ${expenseCount} gasto${expenseCount !== 1 ? "s" : ""}, totalizando ${fmt(totalSpent)}.`;
   const p2 = budget > 0 ? `O orçamento mensal da família é ${fmt(budget)}.` : "Ainda não há orçamento mensal definido para a família.";
   const p3 = `Gastos por integrante: ${memberBreakdown}.`;
   const p4 = topCategories ? `Principais categorias: ${topCategories}.` : "";
-  const p5 = "Acesse o Gastamo para ver detalhes e planejar a próxima semana.";
+  const p5 = "Acesse o Gastamo para ver detalhes e acompanhar a fatura.";
   return [p1, p2, p3, p4, p5].filter(Boolean).join(" ");
 }
 
 /**
  * Cron Vercel: `10 19 * * 0` = domingo 19:10 UTC ≈ 16:10 em Brasília (America/Sao_Paulo).
  * Proteja com CRON_SECRET: Authorization: Bearer <CRON_SECRET>
+ *
+ * Agrega gastos pela competência atual (`billingYm` = YYYY-MM em BRT, igual ao dashboard),
+ * não pelo intervalo civil de 7 dias. O rótulo da semana civil só contextualiza o envio.
  */
 export async function GET(req: NextRequest) {
   const secret = req.headers.get("authorization")?.replace("Bearer ", "");
@@ -39,14 +45,28 @@ export async function GET(req: NextRequest) {
   const now = new Date();
   const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-  const periodLabel = `${formatBrt(weekStart, { day: "2-digit", month: "short" })} – ${formatBrt(now, { day: "2-digit", month: "short", year: "numeric" })}`;
+  const currentBillingYm = getTodayBrazilYMD().slice(0, 7);
+  const [by, bm] = [currentBillingYm.slice(0, 4), currentBillingYm.slice(5, 7)];
+  const billingYmLabel = `${bm}/${by}`;
+
+  const weekRangeLabel = `${formatBrt(weekStart, { day: "2-digit", month: "short" })} – ${formatBrt(now, { day: "2-digit", month: "short", year: "numeric" })}`;
+  const periodLabel = `${weekRangeLabel} · Fatura ref. ${billingYmLabel}`;
+
+  const { start: civilMonthStart, end: civilMonthEnd } =
+    brazilCivilMonthDateRangeFromBillingYm(currentBillingYm);
+  const weeklyReportExpenseWhere = {
+    OR: [
+      { billingYm: currentBillingYm },
+      { billingYm: LEGACY_EXPENSE_BILLING_YM, date: { gte: civilMonthStart, lte: civilMonthEnd } },
+    ],
+  };
 
   try {
     const families = await db.family.findMany({
       include: {
         members: { include: { user: { select: { id: true, name: true } } } },
         expenses: {
-          where: { date: { gte: weekStart, lte: now } },
+          where: weeklyReportExpenseWhere,
           include: {
             category: { select: { name: true } },
             responsible: { select: { name: true } },
@@ -85,20 +105,22 @@ export async function GET(req: NextRequest) {
 
       if (process.env.OPENROUTER_API_KEY) {
         const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-        const prompt = `Você é um assistente financeiro pessoal brasileiro. Analise os dados de gastos da semana da família "${family.name}" e escreva um resumo semanal em português, de forma amigável e útil. Seja direto e objetivo — máximo de 4 parágrafos curtos.
+        const prompt = `Você é um assistente financeiro pessoal brasileiro. A família "${family.name}" usa competência por fatura: os valores abaixo são todos os gastos já contabilizados no mês de referência **${billingYmLabel}** (YYYY-MM: ${currentBillingYm}), não apenas os lançados na última semana civil.
 
-Período (${periodLabel}):
-- Total gasto: ${fmt(totalSpent)}
+Este e-mail é enviado semanalmente (semana civil ${weekRangeLabel}) como lembrete do andamento **dessa fatura/mês de referência**.
+
+Dados:
+- Total no mês de referência da fatura: ${fmt(totalSpent)}
 - Orçamento mensal da família: ${fmt(family.budget)}
-- Número de transações: ${family.expenses.length}
+- Número de transações (nesse mês de referência): ${family.expenses.length}
 - Por integrante: ${memberBreakdown}
 - Por categoria: ${topCategories.join(", ")}
 
-Escreva um resumo que:
-1. Destaque o total gasto e se está dentro do esperado para a semana
-2. Aponte os principais padrões de gastos
-3. Dê uma observação construtiva ou dica para a próxima semana
-Não use bullet points, escreva em parágrafos fluidos.`;
+Escreva um resumo em português (máx. 4 parágrafos curtos), amigável e útil:
+1. Comente o total em relação ao orçamento mensal (ainda há parte do mês pela frente).
+2. Destaque padrões de gastos por categoria ou pessoa.
+3. Uma dica objetiva para as próximas semanas até o fim desse mês de referência.
+Não use bullet points; texto fluido.`;
 
         const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
@@ -124,6 +146,7 @@ Não use bullet points, escreva em parágrafos fluidos.`;
             budget: family.budget,
             memberBreakdown,
             topCategories: topCategories.join(", "),
+            billingYmLabel,
           });
         } else {
           const data = await res.json();
@@ -136,6 +159,7 @@ Não use bullet points, escreva em parágrafos fluidos.`;
               budget: family.budget,
               memberBreakdown,
               topCategories: topCategories.join(", "),
+              billingYmLabel,
             });
           }
         }
@@ -147,6 +171,7 @@ Não use bullet points, escreva em parágrafos fluidos.`;
           budget: family.budget,
           memberBreakdown,
           topCategories: topCategories.join(", "),
+          billingYmLabel,
         });
       }
 
@@ -154,9 +179,14 @@ Não use bullet points, escreva em parágrafos fluidos.`;
         data: family.members.map((m) => ({
           userId: m.user.id,
           type: "weekly_report",
-          title: `Relatório semanal de domingo — ${periodLabel}`,
+          title: `Relatório semanal — fatura ${billingYmLabel}`,
           description: summary,
-          metadata: JSON.stringify({ period: periodLabel }),
+          metadata: JSON.stringify({
+            period: periodLabel,
+            weekRangeLabel,
+            billingYm: currentBillingYm,
+            billingYmLabel,
+          }),
         })),
       });
 

@@ -6,6 +6,7 @@ import { ExpenseButtonPanel } from "@/components/expense-button-panel";
 import { DashboardPeriodPicker } from "@/components/dashboard-period-picker";
 import { CardSpendingChart } from "@/components/card-spending-chart";
 import { formatDateBrazil } from "@/lib/date-local";
+import { formatBillingYmShort } from "@/lib/expense-billing-ym";
 import { DASHBOARD_BOTTOM_ROW, DASHBOARD_GRID_DEFAULT_LAYOUT } from "@/lib/dashboard-layout-grid";
 import { DASHBOARD_WIDGET_ORDER, type DashboardWidgetId } from "@/lib/dashboard-widget-ids";
 
@@ -61,13 +62,14 @@ export type DashboardPageClientProps = {
     name: string;
     amount: number;
     date: string;
+    billingYm: string;
     category: { id: string; name: string } | null;
     responsible: { id: string; name: string };
     card: { id: string; name: string; image: string | null } | null;
   }>;
   totalSpent: number;
   categories: Array<{ id: string; name: string; limitAmount: number; spent: number; percentage: number }>;
-  cards: Array<{ id: string; name: string }>;
+  cards: Array<{ id: string; name: string; statementClosingDay?: number | null }>;
   memberSpending: Array<{
     userId: string;
     name: string;
@@ -76,7 +78,7 @@ export type DashboardPageClientProps = {
     dailyBudget: number;
   }>;
   spendByPayment: Array<{ id: string; name: string; image: string | null; amount: number }>;
-  period: { from: string; to: string };
+  period: { from: string; to: string; ymFrom?: string; ymTo?: string };
   typeStats: { avulsa: number; fixa: number; parcelada: number };
   totalBudget: number;
   dailyBudget: number;
@@ -227,7 +229,9 @@ export function DashboardPageClient(props: DashboardPageClientProps) {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 16px", flexWrap: "wrap", gap: 8 }}>
-          <span style={{ fontWeight: 400, fontSize: 16, color: "var(--color-fg-default)", lineHeight: 1.5 }}>Gastos no período</span>
+          <span style={{ fontWeight: 400, fontSize: 16, color: "var(--color-fg-default)", lineHeight: 1.5 }}>
+            Gastos por fatura no período
+          </span>
           <a
             href="/transactions"
             style={{
@@ -248,7 +252,7 @@ export function DashboardPageClient(props: DashboardPageClientProps) {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "2fr 1.2fr 1fr 1fr 1fr 1fr",
+            gridTemplateColumns: "2fr 1.1fr 1fr 0.85fr 0.75fr 0.85fr 0.85fr",
             alignItems: "center",
             gap: "var(--space-8)",
             padding: "16px 24px",
@@ -261,7 +265,8 @@ export function DashboardPageClient(props: DashboardPageClientProps) {
           <span style={{ fontWeight: 300, fontSize: 14, color: "var(--color-fg-default)", textAlign: "center", lineHeight: 1.5 }}>Categoria</span>
           <span style={{ fontWeight: 300, fontSize: 14, color: "var(--color-fg-default)", textAlign: "center", lineHeight: 1.5 }}>Pagamento</span>
           <span style={{ fontWeight: 300, fontSize: 14, color: "var(--color-fg-default)", textAlign: "center", lineHeight: 1.5 }}>Responsável</span>
-          <span style={{ fontWeight: 300, fontSize: 14, color: "var(--color-fg-default)", textAlign: "center", lineHeight: 1.5 }}>Data</span>
+          <span style={{ fontWeight: 300, fontSize: 14, color: "var(--color-fg-default)", textAlign: "center", lineHeight: 1.5 }}>Fatura</span>
+          <span style={{ fontWeight: 300, fontSize: 12, color: "var(--color-fg-muted)", textAlign: "center", lineHeight: 1.45 }}>Data (doc.)</span>
           <span style={{ fontWeight: 300, fontSize: 14, color: "var(--color-fg-default)", textAlign: "center", lineHeight: 1.5 }}>Valor</span>
         </div>
         {expenses.length === 0 ? (
@@ -285,7 +290,7 @@ export function DashboardPageClient(props: DashboardPageClientProps) {
                 key={expense.id}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "2fr 1.2fr 1fr 1fr 1fr 1fr",
+                  gridTemplateColumns: "2fr 1.1fr 1fr 0.85fr 0.75fr 0.85fr 0.85fr",
                   alignItems: "center",
                   gap: "var(--space-8)",
                   padding: "16px 24px",
@@ -328,7 +333,10 @@ export function DashboardPageClient(props: DashboardPageClientProps) {
                 <span style={{ fontWeight: 400, fontSize: 12, color: "var(--color-fg-default)", textAlign: "center", lineHeight: 1.5 }}>
                   {expense.responsible.name.split(" ")[0]}
                 </span>
-                <span style={{ fontWeight: 400, fontSize: 12, color: "var(--color-fg-default)", textAlign: "center", lineHeight: 1.5 }}>
+                <span style={{ fontWeight: 600, fontSize: 12, color: "var(--color-fg-default)", textAlign: "center", lineHeight: 1.5 }}>
+                  {formatBillingYmShort(expense.billingYm)}
+                </span>
+                <span style={{ fontWeight: 400, fontSize: 11, color: "var(--color-fg-muted)", textAlign: "center", lineHeight: 1.5 }}>
                   {formatDateBrazil(expense.date)}
                 </span>
                 <span style={{ fontWeight: 600, fontSize: 12, color: "var(--color-fg-brand)", textAlign: "center", lineHeight: 1.5 }}>
@@ -538,7 +546,11 @@ export function DashboardPageClient(props: DashboardPageClientProps) {
             <div style={{ flexShrink: 0 }}>
               <ExpenseButtonPanel
                 categories={categories.map((c) => ({ id: c.id, name: c.name }))}
-                cards={cards.map((c) => ({ id: c.id, name: c.name }))}
+                cards={cards.map((c) => ({
+                  id: c.id,
+                  name: c.name,
+                  statementClosingDay: c.statementClosingDay ?? null,
+                }))}
                 members={panelMembers}
               />
             </div>

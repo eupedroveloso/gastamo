@@ -46,10 +46,15 @@ export default async function DashboardPage({
       expenses={expenses.map((e: (typeof expenses)[number]) => ({
         ...e,
         date: e.date instanceof Date ? e.date.toISOString() : String(e.date),
+        billingYm: e.billingYm,
       }))}
       totalSpent={totalSpent}
       categories={categories}
-      cards={cards.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name }))}
+      cards={cards.map((c: { id: string; name: string; statementClosingDay?: number | null }) => ({
+        id: c.id,
+        name: c.name,
+        statementClosingDay: c.statementClosingDay ?? null,
+      }))}
       memberSpending={memberSpending}
       spendByPayment={spendByPayment}
       period={period}

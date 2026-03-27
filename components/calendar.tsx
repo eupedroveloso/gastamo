@@ -9,6 +9,8 @@ interface CalendarProps {
   placeholder?: string;
   /** Quando true, o rótulo mostra só o dia do mês (ex.: "Dia 15") — útil para fechamento de fatura onde só o dia é persistido. */
   dayOfMonthLabel?: boolean;
+  /** Quando true, o rótulo mostra mês e ano por extenso (competência / fatura), ex.: "março de 2026". */
+  competenceMonthLabel?: boolean;
 }
 
 const MONTHS = [
@@ -301,13 +303,184 @@ export function CalendarGrid({
   );
 }
 
+/** Painel só mês + ano (sem dias) — competência de fatura. */
+function CompetenceMonthYearPicker({
+  viewYear,
+  setViewYear,
+  valueYm,
+  onSelectMonth,
+}: {
+  viewYear: number;
+  setViewYear: (y: number) => void;
+  valueYm: string;
+  onSelectMonth: (monthIndex: number) => void;
+}) {
+  const [showYearPicker, setShowYearPicker] = useState(false);
+  const prevYear = () => setViewYear(Math.max(YEAR_RANGE_START, viewYear - 1));
+  const nextYear = () => setViewYear(Math.min(YEAR_RANGE_END, viewYear + 1));
+  const years = Array.from(
+    { length: YEAR_RANGE_END - YEAR_RANGE_START + 1 },
+    (_, i) => YEAR_RANGE_START + i,
+  );
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <button
+          type="button"
+          onClick={prevYear}
+          disabled={viewYear <= YEAR_RANGE_START}
+          style={{
+            width: 28,
+            height: 28,
+            border: "none",
+            background: "none",
+            cursor: viewYear <= YEAR_RANGE_START ? "default" : "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 8,
+            color: viewYear <= YEAR_RANGE_START ? "#D4D4D4" : "#525252",
+          }}
+        >
+          <ChevronLeft />
+        </button>
+
+        <div style={{ position: "relative" }}>
+          <button
+            type="button"
+            onClick={() => setShowYearPicker(!showYearPicker)}
+            style={{
+              background: showYearPicker ? "#F5F5F5" : "none",
+              border: "none",
+              cursor: "pointer",
+              fontSize: 14,
+              fontWeight: 500,
+              color: "#0A0A0A",
+              fontFamily: "inherit",
+              padding: "4px 8px",
+              borderRadius: 6,
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            {viewYear}
+            <ChevronDownIcon size={12} color="#A3A3A3" />
+          </button>
+          {showYearPicker && (
+            <div
+              style={{
+                position: "absolute",
+                top: "calc(100% + 4px)",
+                left: "50%",
+                transform: "translateX(-50%)",
+                zIndex: 10,
+                background: "#FFFFFF",
+                border: "1px solid #E5E5E5",
+                borderRadius: 12,
+                boxShadow: "0px 4px 12px rgba(0,0,0,0.1)",
+                padding: 8,
+                display: "grid",
+                gridTemplateColumns: "repeat(4, 1fr)",
+                gap: 4,
+                width: 216,
+                maxHeight: 160,
+                overflowY: "auto",
+              }}
+            >
+              {years.map((y) => (
+                <button
+                  key={y}
+                  type="button"
+                  onClick={() => {
+                    setViewYear(y);
+                    setShowYearPicker(false);
+                  }}
+                  style={{
+                    padding: "6px 2px",
+                    border: "none",
+                    borderRadius: 8,
+                    background: y === viewYear ? "#0F8F4E" : "transparent",
+                    color: y === viewYear ? "#FFFFFF" : "#0A0A0A",
+                    fontSize: 11,
+                    fontWeight: y === viewYear ? 600 : 400,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {y}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <button
+          type="button"
+          onClick={nextYear}
+          disabled={viewYear >= YEAR_RANGE_END}
+          style={{
+            width: 28,
+            height: 28,
+            border: "none",
+            background: "none",
+            cursor: viewYear >= YEAR_RANGE_END ? "default" : "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 8,
+            color: viewYear >= YEAR_RANGE_END ? "#D4D4D4" : "#525252",
+          }}
+        >
+          <ChevronRight />
+        </button>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+        {MONTHS_SHORT.map((label, i) => {
+          const ym = `${viewYear}-${String(i + 1).padStart(2, "0")}`;
+          const sel = valueYm.length >= 7 && valueYm.slice(0, 7) === ym;
+          return (
+            <button
+              key={label}
+              type="button"
+              onClick={() => onSelectMonth(i)}
+              style={{
+                padding: "10px 6px",
+                border: "none",
+                borderRadius: 10,
+                background: sel ? "#0F8F4E" : "#F5F5F5",
+                color: sel ? "#FFFFFF" : "#0A0A0A",
+                fontSize: 12,
+                fontWeight: sel ? 600 : 500,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                lineHeight: 1.2,
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 const CalendarIcon = ({ color = "#A3A3A3" }: { color?: string }) => (
   <svg width={16} height={16} viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
     <path d="M5.60002 1.99961C5.60002 1.77961 5.42002 1.59961 5.20002 1.59961C4.98002 1.59961 4.80002 1.77961 4.80002 1.99961V3.19961H4.00002C3.11752 3.19961 2.40002 3.91711 2.40002 4.79961V11.9996C2.40002 12.8821 3.11752 13.5996 4.00002 13.5996H12C12.8825 13.5996 13.6 12.8821 13.6 11.9996V4.79961C13.6 3.91711 12.8825 3.19961 12 3.19961H11.2V1.99961C11.2 1.77961 11.02 1.59961 10.8 1.59961C10.58 1.59961 10.4 1.77961 10.4 1.99961V3.19961H5.60002V1.99961ZM4.00002 3.99961H12C12.4425 3.99961 12.8 4.35711 12.8 4.79961V11.9996C12.8 12.4421 12.4425 12.7996 12 12.7996H4.00002C3.55752 12.7996 3.20002 12.4421 3.20002 11.9996V4.79961C3.20002 4.35711 3.55752 3.99961 4.00002 3.99961ZM4.60002 6.79961C4.60002 7.13211 4.86752 7.39961 5.20002 7.39961C5.53252 7.39961 5.80002 7.13211 5.80002 6.79961C5.80002 6.46711 5.53252 6.19961 5.20002 6.19961C4.86752 6.19961 4.60002 6.46711 4.60002 6.79961ZM10.8 9.39961C10.4675 9.39961 10.2 9.66711 10.2 9.99961C10.2 10.3321 10.4675 10.5996 10.8 10.5996C11.1325 10.5996 11.4 10.3321 11.4 9.99961C11.4 9.66711 11.1325 9.39961 10.8 9.39961ZM7.20002 6.79961C7.20002 7.01961 7.38002 7.19961 7.60002 7.19961H10.8C11.02 7.19961 11.2 7.01961 11.2 6.79961C11.2 6.57961 11.02 6.39961 10.8 6.39961H7.60002C7.38002 6.39961 7.20002 6.57961 7.20002 6.79961ZM8.40002 9.59961H5.20002C4.98002 9.59961 4.80002 9.77961 4.80002 9.99961C4.80002 10.2196 4.98002 10.3996 5.20002 10.3996H8.40002C8.62002 10.3996 8.80002 10.2196 8.80002 9.99961C8.80002 9.77961 8.62002 9.59961 8.40002 9.59961Z" fill={color} />
   </svg>
 );
 
-export function Calendar({ value, onChange, placeholder = "Filtrar Data", dayOfMonthLabel }: CalendarProps) {
+export function Calendar({
+  value,
+  onChange,
+  placeholder = "Filtrar Data",
+  dayOfMonthLabel,
+  competenceMonthLabel,
+}: CalendarProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -324,12 +497,28 @@ export function Calendar({ value, onChange, placeholder = "Filtrar Data", dayOfM
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
+  useEffect(() => {
+    if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return;
+    const y = parseInt(value.slice(0, 4), 10);
+    const m = parseInt(value.slice(5, 7), 10) - 1;
+    if (!Number.isNaN(y) && !Number.isNaN(m)) {
+      setViewYear(y);
+      setViewMonth(m);
+    }
+  }, [value]);
+
   const displayValue = value
-    ? dayOfMonthLabel && /^\d{4}-\d{2}-(\d{2})$/.test(value)
-      ? `Dia ${parseInt(value.slice(8, 10), 10)}`
-      : selectedDate
-        ? selectedDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })
-        : ""
+    ? competenceMonthLabel && /^\d{4}-\d{2}-\d{2}$/.test(value)
+      ? new Date(
+          parseInt(value.slice(0, 4), 10),
+          parseInt(value.slice(5, 7), 10) - 1,
+          1,
+        ).toLocaleDateString("pt-BR", { month: "long", year: "numeric" })
+      : dayOfMonthLabel && /^\d{4}-\d{2}-(\d{2})$/.test(value)
+        ? `Dia ${parseInt(value.slice(8, 10), 10)}`
+        : selectedDate
+          ? selectedDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })
+          : ""
     : "";
 
   return (
@@ -358,16 +547,32 @@ export function Calendar({ value, onChange, placeholder = "Filtrar Data", dayOfM
           position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 100,
           background: "#FFFFFF", border: "1px solid #F5F5F5", borderRadius: 16,
           padding: 16, boxShadow: "0px 4px 12px rgba(0,0,0,0.08), 0px 1px 3px rgba(0,0,0,0.06)",
-          width: 280,
+          width: competenceMonthLabel ? 260 : 280,
         }}>
-          <CalendarGrid
-            viewYear={viewYear}
-            viewMonth={viewMonth}
-            setViewYear={setViewYear}
-            setViewMonth={setViewMonth}
-            isSelected={(ds) => value === ds}
-            onSelectDay={(ds) => { onChange(ds); setOpen(false); }}
-          />
+          {competenceMonthLabel ? (
+            <CompetenceMonthYearPicker
+              viewYear={viewYear}
+              setViewYear={setViewYear}
+              valueYm={value && /^\d{4}-\d{2}/.test(value) ? value.slice(0, 7) : ""}
+              onSelectMonth={(monthIndex) => {
+                const ym = `${viewYear}-${String(monthIndex + 1).padStart(2, "0")}`;
+                onChange(`${ym}-01`);
+                setOpen(false);
+              }}
+            />
+          ) : (
+            <CalendarGrid
+              viewYear={viewYear}
+              viewMonth={viewMonth}
+              setViewYear={setViewYear}
+              setViewMonth={setViewMonth}
+              isSelected={(ds) => value === ds}
+              onSelectDay={(ds) => {
+                onChange(ds);
+                setOpen(false);
+              }}
+            />
+          )}
 
           {value && (
             <button
@@ -379,7 +584,7 @@ export function Calendar({ value, onChange, placeholder = "Filtrar Data", dayOfM
                 width: "100%", marginTop: 8,
               }}
             >
-              Limpar data
+              {competenceMonthLabel ? "Limpar fatura" : "Limpar data"}
             </button>
           )}
         </div>

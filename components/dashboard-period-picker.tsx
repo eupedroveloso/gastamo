@@ -55,7 +55,7 @@ export function DashboardPeriodPicker({ from, to }: Props) {
           maxWidth: "100%",
         }}
       >
-        <CalendarRange startDate={start} endDate={end} onChange={applyRange} placeholder="Período" />
+        <CalendarRange startDate={start} endDate={end} onChange={applyRange} placeholder="Competência (faturas)" />
       </div>
       <button
         type="button"

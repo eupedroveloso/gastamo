@@ -19,6 +19,13 @@
   --color-fg-inverse: #ffffff;
   --color-fg-brand: #0f8f4e;
 
+  /* Icon button (Design System — Icon_Button 235:557) */
+  --color-icon-button-bg-default: #0a0a0a;
+  --color-icon-button-bg-hover: #525252;
+  --color-icon-button-bg-selected: #99e83a;
+  --color-icon-button-fg-default: #ffffff;
+  --color-icon-button-fg-selected: #0a0a0a;
+
   /* Border */
   --color-border-default: #e5e5e5;
   --color-border-muted: #f5f5f5;
@@ -56,6 +63,53 @@ body {
   color: var(--color-fg-default);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/**
+ * Botão só ícone — estados Default / Hover / Selected (Figma Icon_Button).
+ * Ícones devem usar fill="currentColor" (prop color="currentColor").
+ */
+.ds-icon-button {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-lg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: var(--space-8);
+  border: none;
+  background: var(--color-icon-button-bg-default);
+  color: var(--color-icon-button-fg-default);
+  cursor: pointer;
+  text-decoration: none;
+  flex-shrink: 0;
+  transition: background 0.2s ease, color 0.2s ease, opacity 0.2s ease;
+}
+
+.ds-icon-button:hover:not([data-disabled="true"]):not([data-selected="true"]) {
+  background: var(--color-icon-button-bg-hover);
+  color: var(--color-icon-button-fg-default);
+}
+
+.ds-icon-button[data-selected="true"] {
+  background: var(--color-icon-button-bg-selected);
+  color: var(--color-icon-button-fg-selected);
+}
+
+.ds-icon-button[data-disabled="true"] {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.ds-icon-button:focus-visible {
+  outline: 2px solid var(--color-icon-button-bg-selected);
+  outline-offset: 2px;
+}
+
+.ds-icon-button:focus:not(:focus-visible) {
+  outline: none;
 }
 
 /* Dashboard: grelha fixa; em ecrãs estreitos os cards empilham-se */

@@ -1,4 +1,5 @@
 import { parseLocalDateInput } from "@/lib/date-local";
+import { billingYmRangeFromYmd } from "@/lib/expense-billing-ym";
 
 const YMD = /^(\d{4})-(\d{2})-(\d{2})$/;
 
@@ -43,11 +44,50 @@ export function parseDashboardPeriodParams(
     from = to;
     to = x;
   }
-  let daysInPeriod = inclusiveDaysBetweenYmd(from, to);
+  const daysInPeriod = inclusiveDaysBetweenYmd(from, to);
   if (daysInPeriod > MAX_RANGE_DAYS || daysInPeriod < 1) {
     return parseDashboardPeriodParams(null, null);
   }
   const start = parseLocalDateInput(from);
   const end = parseLocalDateInput(to);
   return { from, to, start, end, daysInPeriod };
+}
+
+function daysInInclusiveYmRange(ymFrom: string, ymTo: string): number {
+  let y = Number(ymFrom.slice(0, 4));
+  let mo = Number(ymFrom.slice(5, 7));
+  const yE = Number(ymTo.slice(0, 4));
+  const mE = Number(ymTo.slice(5, 7));
+  let days = 0;
+  while (y < yE || (y === yE && mo <= mE)) {
+    days += new Date(y, mo, 0).getDate();
+    mo += 1;
+    if (mo > 12) {
+      mo = 1;
+      y += 1;
+    }
+  }
+  return days;
+}
+
+/**
+ * Período do dashboard em termos de competência (YYYY-MM da fatura).
+ * `daysInPeriod` = dias de calendário somados em cada mês civil do intervalo de referências (divisor de orçamento diário).
+ */
+export function resolveDashboardBillingPeriod(
+  fromRaw: string | null | undefined,
+  toRaw: string | null | undefined,
+): ReturnType<typeof parseDashboardPeriodParams> & {
+  ymFrom: string;
+  ymTo: string;
+  periodLabel: string;
+} {
+  const p = parseDashboardPeriodParams(fromRaw, toRaw);
+  const { ymFrom, ymTo } = billingYmRangeFromYmd(p.from, p.to);
+  const daysInPeriod = daysInInclusiveYmRange(ymFrom, ymTo);
+  const periodLabel =
+    ymFrom === ymTo
+      ? `Faturas ref. ${ymFrom.slice(5, 7)}/${ymFrom.slice(0, 4)}`
+      : `Faturas ${ymFrom.slice(5, 7)}/${ymFrom.slice(0, 4)} – ${ymTo.slice(5, 7)}/${ymTo.slice(0, 4)}`;
+  return { ...p, ymFrom, ymTo, daysInPeriod, periodLabel };
 }

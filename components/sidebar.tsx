@@ -11,38 +11,35 @@ import { getNotifications } from "@/lib/actions/notifications";
 interface SidebarItemProps {
   href: string;
   icon: React.ReactNode;
-  activeIcon: React.ReactNode;
   active?: boolean;
   disabled?: boolean;
   tooltip?: string;
 }
 
-function SidebarItem({ href, icon, activeIcon, active, disabled, tooltip }: SidebarItemProps) {
-  const content = (
-    <div
-      title={tooltip}
-      style={{
-        width: 40,
-        height: 40,
-        borderRadius: "var(--radius-lg)",
-        background: active ? "var(--color-bg-brand-accent)" : "var(--color-bg-inverse)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.4 : 1,
-        transition: "background 0.2s",
-      }}
-    >
-      {active ? activeIcon : icon}
-    </div>
-  );
-
-  if (disabled) return content;
+function SidebarItem({ href, icon, active, disabled, tooltip }: SidebarItemProps) {
+  if (disabled) {
+    return (
+      <div
+        className="ds-icon-button"
+        data-selected="false"
+        data-disabled="true"
+        title={tooltip}
+        aria-disabled
+      >
+        {icon}
+      </div>
+    );
+  }
 
   return (
-    <Link href={href} style={{ textDecoration: "none" }}>
-      {content}
+    <Link
+      href={href}
+      className="ds-icon-button"
+      data-selected={active ? "true" : "false"}
+      aria-current={active ? "page" : undefined}
+      title={tooltip}
+    >
+      {icon}
     </Link>
   );
 }
@@ -54,8 +51,8 @@ const navItems = [
   { href: "/settings", icon: "cog", label: "Configurações" },
 ];
 
-function getIcon(name: string, color: string) {
-  const props = { size: 24, color };
+function getIcon(name: string) {
+  const props = { size: 24, color: "currentColor" as const };
   switch (name) {
     case "grid-2": return <Grid2Icon {...props} />;
     case "square-list": return <SquareListIcon {...props} />;
@@ -97,13 +94,51 @@ export function Sidebar() {
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          justifyContent: "space-between",
           paddingTop: "var(--space-16)",
           paddingBottom: "var(--space-16)",
           flexShrink: 0,
         }}
       >
-        <div />
+        {/* Figma 225:560 — Notification no topo; badge posição ~x:23 y:9 no frame 40×40 */}
+        <button
+          type="button"
+          title="Notificações"
+          onClick={() => setNotificationsOpen(true)}
+          className="ds-icon-button"
+          data-selected={notificationsOpen ? "true" : "false"}
+          style={{ position: "relative", flexShrink: 0 }}
+        >
+          <BellIcon size={24} color="currentColor" />
+          {unreadCount > 0 && (
+            <span
+              style={{
+                position: "absolute",
+                top: 9,
+                right: 9,
+                boxSizing: "border-box",
+                minWidth: 8,
+                minHeight: 8,
+                padding: "2px 3px",
+                borderRadius: 40,
+                border: "1px solid var(--color-bg-inverse)",
+                background: "#EF4444",
+                color: "#000000",
+                fontSize: unreadCount > 9 ? 5 : 6,
+                fontWeight: 800,
+                lineHeight: 1,
+                fontFamily: "var(--font-albert-sans), Inter, sans-serif",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                textAlign: "center",
+              }}
+            >
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </span>
+          )}
+        </button>
+
+        <div style={{ flex: 1, minHeight: "var(--space-16)" }} />
 
         <nav
           style={{
@@ -123,8 +158,7 @@ export function Sidebar() {
               <SidebarItem
                 key={item.href}
                 href={item.href}
-                icon={getIcon(item.icon, "var(--color-fg-inverse)")}
-                activeIcon={getIcon(item.icon, "var(--color-fg-default)")}
+                icon={getIcon(item.icon)}
                 active={isActive}
                 disabled={isDisabled}
                 tooltip={isDisabled ? "Em breve" : item.label}
@@ -133,49 +167,7 @@ export function Sidebar() {
           })}
         </nav>
 
-        {/* Bottom section: bell icon */}
-        <button
-          type="button"
-          title="Notificações"
-          onClick={() => setNotificationsOpen(true)}
-          style={{
-            position: "relative",
-            width: 40,
-            height: 40,
-            borderRadius: "var(--radius-lg)",
-            background: notificationsOpen ? "var(--color-bg-brand-accent)" : "var(--color-bg-inverse)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "pointer",
-            border: "none",
-            transition: "background 0.2s",
-          }}
-        >
-          <BellIcon size={24} color={notificationsOpen ? "var(--color-fg-default)" : "var(--color-fg-inverse)"} />
-          {unreadCount > 0 && (
-            <span
-              style={{
-                position: "absolute",
-                top: 2,
-                right: 2,
-                minWidth: 16,
-                height: 16,
-                padding: "0 4px",
-                borderRadius: 999,
-                background: "#DC2626",
-                color: "#FFF",
-                fontSize: 10,
-                fontWeight: 700,
-                lineHeight: "16px",
-                textAlign: "center",
-                boxSizing: "border-box",
-              }}
-            >
-              {unreadCount > 9 ? "9+" : unreadCount}
-            </span>
-          )}
-        </button>
+        <div style={{ flex: 1, minHeight: "var(--space-16)" }} />
       </aside>
 
       <NotificationsPanel

@@ -6,7 +6,7 @@ import { AddExpensePanel } from "./add-expense-panel";
 
 interface Props {
   categories: { id: string; name: string }[];
-  cards: { id: string; name: string }[];
+  cards: { id: string; name: string; statementClosingDay?: number | null }[];
   members: { userId: string; name: string }[];
 }
 
