@@ -4,8 +4,9 @@ import type { CSSProperties } from "react";
 import { useActionState, useEffect, useRef, useState } from "react";
 import { ChevronDownIcon, CloseIcon, PlusIcon } from "./icons";
 import { Calendar } from "./calendar";
-import { createExpense } from "@/lib/actions/expenses";
+import { createExpense, getInvoiceIdSuggestions } from "@/lib/actions/expenses";
 import { createCardQuick, createCategoryQuick } from "@/lib/actions/quick-create";
+import { getTodayBrazilYMD } from "@/lib/date-local";
 
 interface Props {
   open: boolean;
@@ -108,7 +109,7 @@ export function AddExpensePanel({ open, onClose, categories, cards, members }: P
   const [selectedType, setSelectedType] = useState("avulsa");
   const [installments, setInstallments] = useState("12");
   const [currentInst, setCurrentInst] = useState("1");
-  const [billingYm, setBillingYm] = useState("");
+  const [billingYm, setBillingYm] = useState(() => getTodayBrazilYMD().slice(0, 7));
   const [selectedDate, setSelectedDate] = useState("");
   const [localCategories, setLocalCategories] = useState(categories);
   const [localCards, setLocalCards] = useState(cards);
@@ -123,12 +124,14 @@ export function AddExpensePanel({ open, onClose, categories, cards, members }: P
   const [newCardErr, setNewCardErr] = useState<string | null>(null);
   const [creatingCategory, setCreatingCategory] = useState(false);
   const [creatingCard, setCreatingCard] = useState(false);
+  const [invoiceIdSuggestions, setInvoiceIdSuggestions] = useState<string[]>([]);
   const wasOpen = useRef(false);
 
   useEffect(() => {
     if (!open) return;
     setLocalCategories(categories);
     setLocalCards(cards);
+    getInvoiceIdSuggestions().then(setInvoiceIdSuggestions).catch(() => {});
   }, [open, categories, cards]);
 
   useEffect(() => {
@@ -145,7 +148,7 @@ export function AddExpensePanel({ open, onClose, categories, cards, members }: P
       setSelectedType("avulsa");
       setInstallments("12");
       setCurrentInst("1");
-      setBillingYm("");
+      setBillingYm(getTodayBrazilYMD().slice(0, 7));
     }
     wasOpen.current = open;
   }, [open]);
@@ -269,13 +272,26 @@ export function AddExpensePanel({ open, onClose, categories, cards, members }: P
                 helperText="Esta informação não aparece na tabela de Gastos"
               >
                 <div style={fieldStyle}>
-                  <input name="invoiceId" placeholder="Ex: Mr.Soluctions32" style={inputStyle} />
+                  <input
+                    name="invoiceId"
+                    placeholder="Ex: Mr.Soluctions32"
+                    list="invoiceId-suggestions"
+                    style={inputStyle}
+                    autoComplete="off"
+                  />
                 </div>
+                {invoiceIdSuggestions.length > 0 && (
+                  <datalist id="invoiceId-suggestions">
+                    {invoiceIdSuggestions.map((s) => (
+                      <option key={s} value={s} />
+                    ))}
+                  </datalist>
+                )}
               </FormField>
 
               <FormField
                 label="Data da compra"
-                helperText="Só para referência; totais e filtros usam a fatura (competência)."
+                helperText="Só para referência; os gastos são agrupados pelo mês em que foram lançados."
               >
                 <Calendar
                   value={selectedDate}
@@ -285,19 +301,19 @@ export function AddExpensePanel({ open, onClose, categories, cards, members }: P
               </FormField>
 
               <FormField
-                label="Fatura (competência)"
+                label="Gastos do mês"
                 helperText={
                   selectedType === "parcelada" &&
                   billingYm &&
                   parseInt(currentInst, 10) === 1
-                    ? `Serão criados ${installments} lançamentos parcelados, um em cada fatura seguinte.`
-                    : "Opcional. Mês em que o gasto entra na fatura. Vazio = calcular pela data e pelo cartão."
+                    ? `Serão criados ${installments} lançamentos parcelados, um em cada mês seguinte.`
+                    : "Mês em que este gasto será contabilizado."
                 }
               >
                 <Calendar
                   value={billingYm ? `${billingYm}-01` : ""}
                   onChange={(ds) => setBillingYm(ds ? ds.slice(0, 7) : "")}
-                  placeholder="Mês da fatura (opcional)"
+                  placeholder="Selecione o mês"
                   competenceMonthLabel
                 />
               </FormField>

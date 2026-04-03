@@ -3,9 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
-import { parseExpenseDateString, parseLocalDateInput } from "@/lib/date-local";
-import { billingYmForParcelIndex, expenseDateForParcelRow } from "@/lib/billing-ym-advance";
-import { computeExpenseBillingYm, parseBillingYm } from "@/lib/expense-billing-ym";
+import { parseExpenseDateString, parseLocalDateInput, getTodayBrazilYMD } from "@/lib/date-local";
+import { addCivilMonths, billingYmForParcelIndex, expenseDateForParcelRow } from "@/lib/billing-ym-advance";
+import { parseBillingYm } from "@/lib/expense-billing-ym";
 
 export type ExpenseState = { error?: string; success?: boolean } | null;
 
@@ -43,20 +43,13 @@ export async function createExpense(
   });
   if (!familyMember) return { error: "Família não encontrada" };
 
-  const expenseDate = parseLocalDateInput(dateStr);
+  const expenseDate = parseLocalDateInput(dateStr || getTodayBrazilYMD());
   const cid = typeof cardId === "string" && cardId.trim() !== "" ? cardId.trim() : null;
-  const card = cid
-    ? await db.card.findFirst({
-        where: { id: cid, familyId: familyMember.familyId },
-        select: { statementClosingDay: true },
-      })
-    : null;
 
   const shouldSpreadParcels =
     type === "parcelada" &&
     totalInstallments != null &&
     totalInstallments >= 2 &&
-    (currentInstallment ?? 1) === 1 &&
     billingYmForm != null;
 
   const responsibleRow = await db.user.findFirst({
@@ -91,11 +84,13 @@ export async function createExpense(
     }
   };
 
-  if (shouldSpreadParcels && totalInstallments) {
-    const firstYm = billingYmForm;
+  if (shouldSpreadParcels && totalInstallments && billingYmForm) {
+    // billingYmForm é o mês da parcela `currentInstallment`; parcela 1 fica mais atrás
+    const currentInst = currentInstallment ?? 1;
+    const firstYm = addCivilMonths(billingYmForm, -(currentInst - 1));
     const rows = Array.from({ length: totalInstallments }, (_, i) => {
-      const ym = billingYmForParcelIndex(firstYm, card, i);
-      const rowDate = expenseDateForParcelRow(i, expenseDate, ym, card);
+      const ym = billingYmForParcelIndex(firstYm, null, i);
+      const rowDate = expenseDateForParcelRow(i === 0 ? 0 : i, expenseDate, ym, null);
       return {
         name,
         invoiceId: invoiceId || null,
@@ -114,10 +109,32 @@ export async function createExpense(
     await db.expense.createMany({ data: rows });
     const amountFmt = amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
     await notifyCreated({
-      description: `${responsibleLabel} registrou: ${name} · ${totalInstallments}x de ${amountFmt}/parcela (faturas seguintes)`,
+      description: `${responsibleLabel} registrou: ${name} · ${totalInstallments}x de ${amountFmt}/parcela`,
+    });
+  } else if (type === "fixa") {
+    // Gastos fixos: gera 24 meses consecutivos a partir do mês selecionado
+    const startYm = billingYmForm ?? getTodayBrazilYMD().slice(0, 7);
+    const rows = Array.from({ length: 24 }, (_, i) => ({
+      name,
+      invoiceId: invoiceId || null,
+      date: expenseDate,
+      billingYm: addCivilMonths(startYm, i),
+      amount,
+      type: "fixa" as const,
+      totalInstallments: null,
+      currentInstallment: null,
+      familyId: familyMember.familyId,
+      categoryId: categoryId || null,
+      responsibleId,
+      cardId: cid,
+    }));
+    await db.expense.createMany({ data: rows });
+    const amountFmt = amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    await notifyCreated({
+      description: `${responsibleLabel} registrou gasto fixo: ${name} · ${amountFmt}/mês`,
     });
   } else {
-    const billingYm = billingYmForm ?? computeExpenseBillingYm(expenseDate, card);
+    const billingYm = billingYmForm ?? getTodayBrazilYMD().slice(0, 7);
     const expense = await db.expense.create({
       data: {
         name,
@@ -187,16 +204,10 @@ export async function updateExpense(
   });
   if (!owned) return { error: "Gasto não encontrado" };
 
-  const expenseDate = parseLocalDateInput(dateStr);
+  const expenseDate = parseLocalDateInput(dateStr || getTodayBrazilYMD());
   const cid = typeof cardId === "string" && cardId.trim() !== "" ? cardId.trim() : null;
-  const card = cid
-    ? await db.card.findFirst({
-        where: { id: cid, familyId: familyMember.familyId },
-        select: { statementClosingDay: true },
-      })
-    : null;
   const billingYmForm = parseBillingYm(formData.get("billingYm") as string | null);
-  const billingYm = billingYmForm ?? computeExpenseBillingYm(expenseDate, card);
+  const billingYm = billingYmForm ?? getTodayBrazilYMD().slice(0, 7);
 
   await db.expense.update({
     where: { id: expenseId },
@@ -287,13 +298,16 @@ export async function bulkDeleteExpenses(ids: string[]): Promise<{ success?: boo
 export async function bulkCreateExpenses(
   expenses: Array<{
     name: string;
+    invoiceId?: string;
     amount: number;
     date: string;
     type: string;
     categoryId?: string;
     responsibleId: string;
     cardId?: string;
-  }>
+  }>,
+  /** YYYY-MM: mês dos gastos importados. */
+  faturaYm?: string | null,
 ): Promise<{ success?: boolean; count?: number; error?: string }> {
   const session = await getSession();
   if (!session) return { error: "Não autenticado" };
@@ -305,25 +319,18 @@ export async function bulkCreateExpenses(
   });
   if (!member) return { error: "Família não encontrada" };
 
-  const ids = [...new Set(expenses.map((e) => e.cardId).filter((x): x is string => Boolean(x)))];
-  const cards = ids.length
-    ? await db.card.findMany({
-        where: { familyId: member.familyId, id: { in: ids } },
-        select: { id: true, statementClosingDay: true },
-      })
-    : [];
-  const cardById = new Map(cards.map((c) => [c.id, c]));
+  const resolvedFaturaYm = parseBillingYm(faturaYm ?? null);
 
   await db.expense.createMany({
-    data: expenses.map((e: { name: string; amount: number; date: string; type: string; categoryId?: string; responsibleId: string; cardId?: string }) => {
+    data: expenses.map((e) => {
       const d = parseExpenseDateString(e.date);
       const cid = e.cardId && e.cardId.trim() !== "" ? e.cardId.trim() : null;
-      const card = cid ? cardById.get(cid) ?? null : null;
       return {
         name: e.name,
+        invoiceId: e.invoiceId || null,
         amount: e.amount,
         date: d,
-        billingYm: computeExpenseBillingYm(d, card),
+        billingYm: resolvedFaturaYm ?? getTodayBrazilYMD().slice(0, 7),
         type: e.type,
         pending: true,
         familyId: member.familyId,
@@ -337,4 +344,25 @@ export async function bulkCreateExpenses(
   revalidatePath("/transactions");
   revalidatePath("/");
   return { success: true, count: expenses.length };
+}
+
+export async function getInvoiceIdSuggestions(): Promise<string[]> {
+  const session = await getSession();
+  if (!session) return [];
+
+  const member = await db.familyMember.findFirst({
+    where: { userId: session.userId },
+    select: { familyId: true },
+  });
+  if (!member) return [];
+
+  const rows = await db.expense.findMany({
+    where: { familyId: member.familyId, invoiceId: { not: null } },
+    select: { invoiceId: true },
+    distinct: ["invoiceId"],
+    orderBy: { createdAt: "desc" },
+    take: 200,
+  });
+
+  return rows.map((r) => r.invoiceId!).filter(Boolean);
 }

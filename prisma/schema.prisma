@@ -67,9 +67,9 @@ model Card {
   name                 String
   /// Imagem do cartão (data URL), formato horizontal recortado no cliente.
   image                String?
-  /// Dia do mês em que a fatura fecha (1–31). Opcional; usado para somar gastos do ciclo da fatura.
+  /// Dia do mês em que a fatura fecha (1–31), opcional — referência nas configurações.
   statementClosingDay  Int?
-  /// Dias após o fechamento até o vencimento (ciclo de faturamento).
+  /// Dias após o fechamento até o vencimento (referência).
   dueDayOffset         Int      @default(7)
   createdAt            DateTime @default(now())
 

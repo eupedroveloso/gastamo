@@ -1,4 +1,3 @@
-import { getCurrentStatementWindow } from "@/lib/statement-cycle";
 import { parseLocalDateInput, toBrazilCalendarYMD } from "@/lib/date-local";
 
 const YM = /^(\d{4})-(\d{2})$/;
@@ -33,23 +32,13 @@ export function formatBillingYmShort(ym: string | null | undefined): string {
 }
 
 /**
- * Mês de referência da fatura (YYYY-MM) para um gasto:
- * - Com cartão e dia de fechamento: mês civil (BRT) da **data de fechamento** do ciclo que contém `expenseDate`.
- * - Caso contrário: mês civil (BRT) da própria `date` do gasto.
+ * Competência padrão (YYYY-MM) quando o formulário não envia `billingYm`:
+ * mês civil (BRT) da data do gasto.
  */
 export function computeExpenseBillingYm(
   expenseDate: Date,
-  card: { statementClosingDay: number | null } | null | undefined,
+  _card?: { statementClosingDay: number | null } | null | undefined,
 ): string {
-  const day = card?.statementClosingDay;
-  if (day != null && day >= 1 && day <= 31) {
-    try {
-      const w = getCurrentStatementWindow(day, expenseDate);
-      return toBrazilCalendarYMD(w.end).slice(0, 7);
-    } catch {
-      /* cai no civil */
-    }
-  }
   return toBrazilCalendarYMD(expenseDate).slice(0, 7);
 }
 

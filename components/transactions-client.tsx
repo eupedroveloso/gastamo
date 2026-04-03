@@ -13,22 +13,11 @@ import {
 } from "./icons";
 import { createExpense, updateExpense, deleteExpense, bulkDeleteExpenses } from "@/lib/actions/expenses";
 import { formatDateBrazil, getTodayBrazilYMD, toBrazilCalendarYMD } from "@/lib/date-local";
-import { billingYmRangeFromYmd, formatBillingYmShort, LEGACY_EXPENSE_BILLING_YM } from "@/lib/expense-billing-ym";
-import { useBillingCycle } from "@/hooks/useBillingCycle";
-import { BillingCyclePicker } from "./billing-cycle-picker";
+import { formatBillingYmShort } from "@/lib/expense-billing-ym";
 import { ExpenseImportPanel } from "./expense-import-panel";
-import { Calendar, CalendarRange } from "./calendar";
+import { Calendar } from "./calendar";
 import { PaymentCardThumbnail } from "./payment-card-thumbnail";
 
-/** Intervalo civil do mês de competência atual (BRT) — filtro lista gastos por `billingYm`. */
-function getDefaultFaturaMonthCivilRange(): { start: string; end: string } {
-  const ymd = getTodayBrazilYMD();
-  const y = parseInt(ymd.slice(0, 4), 10);
-  const m = parseInt(ymd.slice(5, 7), 10);
-  const lastDay = new Date(y, m, 0).getDate();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return { start: `${y}-${pad(m)}-01`, end: `${y}-${pad(m)}-${pad(lastDay)}` };
-}
 
 type Expense = {
   id: string;
@@ -169,9 +158,8 @@ function ExpenseForm({
   const [installments, setInstallments] = useState(String(expense?.totalInstallments ?? "12"));
   const [currentInst, setCurrentInst] = useState(String(expense?.currentInstallment ?? "1"));
   const [billingYm, setBillingYm] = useState(() => {
-    if (!expense?.billingYm) return "";
-    if (expense.billingYm === LEGACY_EXPENSE_BILLING_YM) return "";
-    return expense.billingYm;
+    if (expense?.billingYm) return expense.billingYm;
+    return getTodayBrazilYMD().slice(0, 7);
   });
   const [selectedDate, setSelectedDate] = useState(
     expense ? toBrazilCalendarYMD(expense.date) : ""
@@ -339,7 +327,7 @@ function ExpenseForm({
 
           <FormField
             label="Data da compra"
-            helperText="Só para referência; totais e filtros usam a fatura (competência)."
+            helperText="Só para referência; os gastos são agrupados pelo mês em que foram lançados."
           >
             <Calendar
               value={selectedDate}
@@ -349,20 +337,20 @@ function ExpenseForm({
           </FormField>
 
           <FormField
-            label="Fatura (competência)"
+            label="Gastos do mês"
             helperText={
               !expense &&
               selectedType === "parcelada" &&
               billingYm &&
               parseInt(currentInst, 10) === 1
-                ? `Serão criados ${installments} lançamentos parcelados, um em cada fatura seguinte.`
-                : "Opcional. Mês em que o gasto entra na fatura. Vazio = calcular pela data e pelo cartão."
+                ? `Serão criados ${installments} lançamentos parcelados, um em cada mês seguinte.`
+                : "Mês em que este gasto será contabilizado."
             }
           >
             <Calendar
               value={billingYm ? `${billingYm}-01` : ""}
               onChange={(ds) => setBillingYm(ds ? ds.slice(0, 7) : "")}
-              placeholder="Mês da fatura (opcional)"
+              placeholder="Selecione o mês"
               competenceMonthLabel
             />
           </FormField>
@@ -451,27 +439,14 @@ const COL_TEMPLATE = "32px minmax(150px, 2fr) 112px 112px 136px 112px 88px 96px 
 
 export function TransactionsClient({ expenses, categories, cards, members }: Props) {
   const [search, setSearch] = useState("");
-  const defaultRange = getDefaultFaturaMonthCivilRange();
-  const [dateStart, setDateStart] = useState(defaultRange.start);
-  const [dateEnd, setDateEnd] = useState(defaultRange.end);
+  const [filterMonth, setFilterMonth] = useState(() => getTodayBrazilYMD().slice(0, 7));
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [filterType, setFilterType] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
   const [filterCard, setFilterCard] = useState("");
   const [filterMember, setFilterMember] = useState("");
-
-  const selectedCard = useMemo(
-    () => (filterCard ? cards.find((c) => c.id === filterCard) ?? null : null),
-    [cards, filterCard],
-  );
-  const billingCard =
-    selectedCard != null && selectedCard.statementClosingDay != null ? selectedCard : null;
-  const { cycle, goPrev, goNext, resetOffset } = useBillingCycle(billingCard);
-  const useBillingPeriodFilter = Boolean(filterCard && billingCard && cycle);
-
-  useEffect(() => {
-    resetOffset();
-  }, [filterCard, resetOffset]);
+  const [filterDateStart, setFilterDateStart] = useState("");
+  const [filterDateEnd, setFilterDateEnd] = useState("");
 
   const [panelMode, setPanelMode] = useState<"add" | "edit" | "import" | null>(null);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
@@ -525,27 +500,16 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
         const inAmount = expenseMatchesAmountSearch(e.amount, raw);
         if (!inName && !inInvoice && !inCardId && !inCardName && !inAmount) return false;
       }
-      if (useBillingPeriodFilter && cycle) {
-        if (e.card?.id !== filterCard) return false;
-        const targetYm = toBrazilCalendarYMD(cycle.endDate).slice(0, 7);
-        if (e.billingYm === LEGACY_EXPENSE_BILLING_YM) {
-          const expDate = toBrazilCalendarYMD(e.date);
-          const cStart = toBrazilCalendarYMD(cycle.startDate);
-          const cEnd = toBrazilCalendarYMD(cycle.endDate);
-          if (expDate < cStart || expDate > cEnd) return false;
-        } else if (e.billingYm !== targetYm) return false;
-      } else if (dateStart || dateEnd) {
-        const { ymFrom, ymTo } = billingYmRangeFromYmd(dateStart || dateEnd, dateEnd || dateStart);
-        if (e.billingYm === LEGACY_EXPENSE_BILLING_YM) {
-          const expDate = toBrazilCalendarYMD(e.date);
-          if (dateStart && expDate < dateStart) return false;
-          if (dateEnd && expDate > dateEnd) return false;
-        } else if (e.billingYm < ymFrom || e.billingYm > ymTo) return false;
-      }
+      if (filterMonth && e.billingYm !== filterMonth) return false;
       if (filterType && e.type !== filterType) return false;
       if (filterCategory && e.category?.id !== filterCategory) return false;
       if (filterCard && e.card?.id !== filterCard) return false;
       if (filterMember && e.responsible.id !== filterMember) return false;
+      if (filterDateStart || filterDateEnd) {
+        const expYmd = toBrazilCalendarYMD(e.date);
+        if (filterDateStart && expYmd < filterDateStart) return false;
+        if (filterDateEnd && expYmd > filterDateEnd) return false;
+      }
       return true;
     });
     list.sort((a, b) => {
@@ -556,14 +520,13 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
   }, [
     expenses,
     search,
-    dateStart,
-    dateEnd,
+    filterMonth,
     filterType,
     filterCategory,
     filterCard,
     filterMember,
-    useBillingPeriodFilter,
-    cycle,
+    filterDateStart,
+    filterDateEnd,
   ]);
 
   const { filteredCount, filteredAmountSum } = useMemo(() => {
@@ -572,8 +535,9 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
     return { filteredCount: count, filteredAmountSum: total };
   }, [filtered]);
 
-  const hasActiveFilters = Boolean(filterType) || Boolean(filterCategory) || Boolean(filterCard) || Boolean(filterMember);
-  const activeFilterCount = [filterType, filterCategory, filterCard, filterMember].filter(Boolean).length;
+  const hasActiveFilters = Boolean(filterType) || Boolean(filterCategory) || Boolean(filterCard) || Boolean(filterMember) || Boolean(filterDateStart) || Boolean(filterDateEnd);
+  const currentMonth = getTodayBrazilYMD().slice(0, 7);
+  const activeFilterCount = [filterType, filterCategory, filterCard, filterMember, filterDateStart, filterDateEnd].filter(Boolean).length;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8, height: "100%" }}>
@@ -600,7 +564,7 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
           }}
         >
           <span style={{ fontWeight: 400, fontSize: 16, color: "#0A0A0A", whiteSpace: "nowrap", lineHeight: 1.5 }}>
-            Gastos por fatura
+            Gastos do mês
           </span>
 
           <div
@@ -663,20 +627,12 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
               Filtrar{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
             </button>
 
-            {/* Ciclo de faturamento (pagamento com dia de fechamento) ou período civil */}
-            {useBillingPeriodFilter && cycle ? (
-              <BillingCyclePicker cycle={cycle} onPrev={goPrev} onNext={goNext} />
-            ) : (
-              <CalendarRange
-                startDate={dateStart}
-                endDate={dateEnd}
-                onChange={(s, e) => {
-                  setDateStart(s);
-                  setDateEnd(e);
-                }}
-                placeholder="Competência (faturas)"
-              />
-            )}
+            <Calendar
+              value={filterMonth ? `${filterMonth}-01` : ""}
+              onChange={(ds) => setFilterMonth(ds ? ds.slice(0, 7) : "")}
+              placeholder="Selecione o mês"
+              competenceMonthLabel
+            />
 
             {/* Importar */}
             <button
@@ -719,65 +675,87 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
               background: "#FAFAFA",
               border: "1px solid #F5F5F5",
               borderRadius: 24,
-              display: "grid",
-              gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+              display: "flex",
+              flexDirection: "column",
               gap: 16,
-              alignItems: "end",
               boxSizing: "border-box",
             }}
           >
-            {(
-              [
-                {
-                  label: "Tipo",
-                  value: filterType,
-                  set: setFilterType,
-                  options: EXPENSE_TYPES.map((t) => ({ value: t.value, label: t.label })),
-                  all: "Todos",
-                },
-                {
-                  label: "Categoria",
-                  value: filterCategory,
-                  set: setFilterCategory,
-                  options: categories.map((c) => ({ value: c.id, label: c.name })),
-                  all: "Todas",
-                },
-                {
-                  label: "Cartão",
-                  value: filterCard,
-                  set: setFilterCard,
-                  options: cards.map((c) => ({ value: c.id, label: c.name })),
-                  all: "Todos",
-                },
-                {
-                  label: "Responsável",
-                  value: filterMember,
-                  set: setFilterMember,
-                  options: members.map((m) => ({ value: m.userId, label: m.name })),
-                  all: "Todos",
-                },
-              ] as const
-            ).map((f) => (
-              <div key={f.label} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: "#525252" }}>{f.label}</label>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#FFFFFF", border: "1px solid #F5F5F5", borderRadius: 12, padding: "6px 10px" }}>
-                  <select
-                    value={f.value}
-                    onChange={(e) => f.set(e.target.value)}
-                    style={{ border: "none", outline: "none", background: "transparent", fontSize: 13, color: "#0A0A0A", fontFamily: "inherit", width: "100%", cursor: "pointer", ...selectResetStyle }}
-                  >
-                    <option value="">{f.all}</option>
-                    {f.options.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDownIcon size={14} color="#A3A3A3" />
+            {/* Linha 1: selects de tipo/categoria/cartão/responsável */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 16, alignItems: "end" }}>
+              {(
+                [
+                  {
+                    label: "Tipo",
+                    value: filterType,
+                    set: setFilterType,
+                    options: EXPENSE_TYPES.map((t) => ({ value: t.value, label: t.label })),
+                    all: "Todos",
+                  },
+                  {
+                    label: "Categoria",
+                    value: filterCategory,
+                    set: setFilterCategory,
+                    options: categories.map((c) => ({ value: c.id, label: c.name })),
+                    all: "Todas",
+                  },
+                  {
+                    label: "Cartão",
+                    value: filterCard,
+                    set: setFilterCard,
+                    options: cards.map((c) => ({ value: c.id, label: c.name })),
+                    all: "Todos",
+                  },
+                  {
+                    label: "Responsável",
+                    value: filterMember,
+                    set: setFilterMember,
+                    options: members.map((m) => ({ value: m.userId, label: m.name })),
+                    all: "Todos",
+                  },
+                ] as const
+              ).map((f) => (
+                <div key={f.label} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#525252" }}>{f.label}</label>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#FFFFFF", border: "1px solid #F5F5F5", borderRadius: 12, padding: "6px 10px" }}>
+                    <select
+                      value={f.value}
+                      onChange={(e) => f.set(e.target.value)}
+                      style={{ border: "none", outline: "none", background: "transparent", fontSize: 13, color: "#0A0A0A", fontFamily: "inherit", width: "100%", cursor: "pointer", ...selectResetStyle }}
+                    >
+                      <option value="">{f.all}</option>
+                      {f.options.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDownIcon size={14} color="#A3A3A3" />
+                  </div>
                 </div>
+              ))}
+            </div>
+
+            {/* Linha 2: filtro de data do gasto */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 16, alignItems: "end" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#525252" }}>Data início</label>
+                <Calendar
+                  value={filterDateStart}
+                  onChange={setFilterDateStart}
+                  placeholder="De"
+                />
               </div>
-            ))}
-            {hasActiveFilters ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#525252" }}>Data fim</label>
+                <Calendar
+                  value={filterDateEnd}
+                  onChange={setFilterDateEnd}
+                  placeholder="Até"
+                />
+              </div>
+              <div />
+              {hasActiveFilters ? (
               <button
                 type="button"
                 onClick={() => {
@@ -785,6 +763,8 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
                   setFilterCategory("");
                   setFilterCard("");
                   setFilterMember("");
+                  setFilterDateStart("");
+                  setFilterDateEnd("");
                 }}
                 style={{
                   padding: "6px 14px",
@@ -806,6 +786,7 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
             ) : (
               <div />
             )}
+            </div>
           </div>
         )}
 
@@ -958,7 +939,7 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
           <span style={{ fontWeight: 600, fontSize: 14, color: "#0A0A0A", lineHeight: 1.5 }}>
             Nome do Gasto
           </span>
-          {["Tipo", "Categoria", "Cartão", "Responsável", "Fatura", "Data (doc.)", "Valor"].map((col) => (
+          {["Tipo", "Categoria", "Cartão", "Responsável", "Mês", "Data (doc.)", "Valor"].map((col) => (
             <span key={col} style={{ fontWeight: 300, fontSize: 14, color: "#0A0A0A", lineHeight: 1.5, textAlign: "center" }}>
               {col}
             </span>
@@ -1165,10 +1146,17 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
             <span style={{ fontSize: 12, color: "#A3A3A3", fontWeight: 300 }}>
               {filtered.length} {filtered.length === 1 ? "gasto" : "gastos"} encontrado{filtered.length !== 1 ? "s" : ""}
             </span>
-            {(search || dateStart || dateEnd || hasActiveFilters) && (
+            {(search || filterMonth !== currentMonth || hasActiveFilters) && (
               <button
                 type="button"
-                onClick={() => { setSearch(""); setDateStart(""); setDateEnd(""); setFilterType(""); setFilterCategory(""); setFilterCard(""); setFilterMember(""); }}
+                onClick={() => {
+                  setSearch("");
+                  setFilterMonth(currentMonth);
+                  setFilterType("");
+                  setFilterCategory("");
+                  setFilterCard("");
+                  setFilterMember("");
+                }}
                 style={{ fontSize: 12, color: "#A3A3A3", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit" }}
               >
                 Limpar tudo

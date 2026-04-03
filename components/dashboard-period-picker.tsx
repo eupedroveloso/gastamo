@@ -2,12 +2,20 @@
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useTransition } from "react";
-import { CalendarRange } from "./calendar";
+import { Calendar } from "./calendar";
 
 type Props = {
   from: string;
   to: string;
 };
+
+function monthToRange(ym: string): { from: string; to: string } {
+  const y = parseInt(ym.slice(0, 4), 10);
+  const m = parseInt(ym.slice(5, 7), 10);
+  const lastDay = new Date(y, m, 0).getDate();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return { from: `${y}-${pad(m)}-01`, to: `${y}-${pad(m)}-${pad(lastDay)}` };
+}
 
 export function DashboardPeriodPicker({ from, to }: Props) {
   const router = useRouter();
@@ -15,14 +23,15 @@ export function DashboardPeriodPicker({ from, to }: Props) {
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
 
-  const start = searchParams.get("from") ?? from;
-  const end = searchParams.get("to") ?? to;
+  const currentFrom = searchParams.get("from") ?? from;
 
-  const applyRange = useCallback(
-    (s: string, e: string) => {
+  const applyMonth = useCallback(
+    (ymd: string) => {
+      if (!ymd) return;
+      const { from: f, to: t } = monthToRange(ymd.slice(0, 7));
       const next = new URLSearchParams(searchParams.toString());
-      next.set("from", s);
-      next.set("to", e);
+      next.set("from", f);
+      next.set("to", t);
       startTransition(() => {
         router.push(`${pathname}?${next.toString()}`);
       });
@@ -30,51 +39,14 @@ export function DashboardPeriodPicker({ from, to }: Props) {
     [router, pathname, searchParams],
   );
 
-  const resetMonth = useCallback(() => {
-    startTransition(() => {
-      router.push(pathname);
-    });
-  }, [router, pathname]);
-
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "flex-start",
-        gap: 12,
-        flexWrap: "wrap",
-        flexShrink: 0,
-        justifyContent: "flex-end",
-      }}
-    >
-      <div
-        style={{
-          opacity: isPending ? 0.65 : 1,
-          transition: "opacity 0.15s",
-          flexShrink: 0,
-          maxWidth: "100%",
-        }}
-      >
-        <CalendarRange startDate={start} endDate={end} onChange={applyRange} placeholder="Competência (faturas)" />
-      </div>
-      <button
-        type="button"
-        onClick={resetMonth}
-        style={{
-          padding: "8px 14px",
-          borderRadius: 16,
-          border: "1px solid #E5E5E5",
-          background: "#FFFFFF",
-          fontSize: 13,
-          fontWeight: 600,
-          color: "#0A0A0A",
-          cursor: "pointer",
-          fontFamily: "inherit",
-          lineHeight: 1.5,
-        }}
-      >
-        Mês atual
-      </button>
+    <div style={{ opacity: isPending ? 0.65 : 1, transition: "opacity 0.15s", flexShrink: 0 }}>
+      <Calendar
+        value={currentFrom}
+        onChange={applyMonth}
+        placeholder="Selecione o mês"
+        competenceMonthLabel
+      />
     </div>
   );
 }

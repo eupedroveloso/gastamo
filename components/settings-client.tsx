@@ -14,7 +14,6 @@ import {
   deleteCategory,
   updateCategoryLimit,
   createCard,
-  updateCardStatementClosing,
   updateCardImage,
   deleteCard,
   uploadAvatar,
@@ -32,7 +31,6 @@ import {
   PencilIcon,
   EyeIcon,
 } from "./icons";
-import { closingDayToInputValue } from "@/lib/statement-cycle";
 import { sortMembersForBudgetDisplay } from "@/lib/member-display-order";
 import { Calendar } from "./calendar";
 import { CardImageCropModal } from "./card-image-crop-modal";
@@ -155,75 +153,6 @@ type SettingsFormState = { error?: string; success?: string } | null;
 
 type FormActionProp = NonNullable<React.ComponentProps<"form">["action"]>;
 
-function CardStatementClosingForm({
-  cardId,
-  initialClosingDay,
-  initialDueDayOffset,
-  closingAction,
-  closingPending,
-}: {
-  cardId: string;
-  initialClosingDay: number | null;
-  initialDueDayOffset: number;
-  closingAction: FormActionProp;
-  closingPending: boolean;
-}) {
-  const [closingYmd, setClosingYmd] = useState(() => closingDayToInputValue(initialClosingDay));
-  const [dueOffset, setDueOffset] = useState(String(initialDueDayOffset));
-  return (
-    <form action={closingAction} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
-      <input type="hidden" name="cardId" value={cardId} />
-      <input type="hidden" name="closingDate" value={closingYmd} />
-      <span style={{ fontSize: 12, fontWeight: 500, color: "#404040" }}>Fechamento</span>
-      <Calendar
-        value={closingYmd}
-        onChange={setClosingYmd}
-        placeholder="Dia do fechamento"
-        dayOfMonthLabel
-      />
-      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 500, color: "#404040" }}>
-        Vencimento (+dias)
-        <input
-          name="dueDayOffset"
-          type="number"
-          min={0}
-          max={60}
-          value={dueOffset}
-          onChange={(e) => setDueOffset(e.target.value)}
-          style={{
-            width: 52,
-            padding: "8px 10px",
-            borderRadius: 10,
-            border: "1px solid #E5E5E5",
-            fontSize: 13,
-            fontFamily: "var(--font-albert-sans), sans-serif",
-          }}
-        />
-      </label>
-      <button
-        type="submit"
-        disabled={closingPending}
-        style={{
-          padding: "10px 16px",
-          borderRadius: 12,
-          background: "#1A3A2E",
-          border: "none",
-          cursor: closingPending ? "not-allowed" : "pointer",
-          opacity: closingPending ? 0.7 : 1,
-          fontSize: 13,
-          fontWeight: 600,
-          color: "#FFFFFF",
-          fontFamily: "var(--font-albert-sans), sans-serif",
-        }}
-      >
-        Salvar
-      </button>
-      <span style={{ fontSize: 11, color: "#A3A3A3", width: "100%" }}>
-        Só o dia do mês é salvo. Use &quot;Limpar data&quot; no calendário e salve para remover o fechamento. O vencimento é calculado a partir do dia de fechamento do ciclo.
-      </span>
-    </form>
-  );
-}
 
 function CreatePaymentMethodForm({
   cardAction,
@@ -234,12 +163,10 @@ function CreatePaymentMethodForm({
   cardPending: boolean;
   cardState: SettingsFormState;
 }) {
-  const [closingYmd, setClosingYmd] = useState("");
   const [cardImageData, setCardImageData] = useState("");
   const [cropOpen, setCropOpen] = useState(false);
   useEffect(() => {
     if (cardState?.success) {
-      setClosingYmd("");
       setCardImageData("");
     }
   }, [cardState?.success]);
@@ -249,14 +176,7 @@ function CreatePaymentMethodForm({
         <div style={{ ...inputStyle, width: 300 }}>
           <input name="cardName" style={inputTextStyle} placeholder="Nome do pagamento" />
         </div>
-        <input type="hidden" name="closingDate" value={closingYmd} />
         <input type="hidden" name="cardImage" value={cardImageData} />
-        <Calendar
-          value={closingYmd}
-          onChange={setClosingYmd}
-          placeholder="Fechamento (opcional)"
-          dayOfMonthLabel
-        />
         <button
           type="button"
           onClick={() => setCropOpen(true)}
@@ -332,16 +252,11 @@ function CreatePaymentMethodForm({
 
 function SettingsPaymentCardRow({
   card,
-  closingAction,
-  closingPending,
 }: {
   card: Card;
-  closingAction: FormActionProp;
-  closingPending: boolean;
 }) {
   const router = useRouter();
   const deleteCardWithId = deleteCard.bind(null, card.id);
-  const closingDay = card.statementClosingDay ?? null;
   const [cropOpen, setCropOpen] = useState(false);
   const [imgNote, setImgNote] = useState<{ error?: string; success?: string }>({});
   const [imgBusy, startImg] = useTransition();
@@ -364,11 +279,6 @@ function SettingsPaymentCardRow({
           <PaymentCardThumbnail imageUrl={card.image} name={card.name} width={120} />
           <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: "#0A0A0A" }}>{card.name}</span>
-            {closingDay != null && (
-              <span style={{ fontSize: 12, color: "#737373" }}>
-                Fatura fecha dia <strong>{closingDay}</strong> de cada mês
-              </span>
-            )}
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
               <button
                 type="button"
@@ -443,13 +353,6 @@ function SettingsPaymentCardRow({
           </button>
         </form>
       </div>
-      <CardStatementClosingForm
-        cardId={card.id}
-        initialClosingDay={closingDay}
-        initialDueDayOffset={card.dueDayOffset ?? 7}
-        closingAction={closingAction}
-        closingPending={closingPending}
-      />
       <CardImageCropModal
         open={cropOpen}
         onClose={() => setCropOpen(false)}
@@ -617,7 +520,6 @@ export function SettingsClient({ user, family, pendingInvitesSent, pendingInvite
   const [categoryState, categoryAction, categoryPending] = useActionState(createCategory, null);
   const [categoryLimitState, categoryLimitAction, categoryLimitPending] = useActionState(updateCategoryLimit, null);
   const [cardState, cardAction, cardPending] = useActionState(createCard, null);
-  const [closingState, closingAction, closingPending] = useActionState(updateCardStatementClosing, null);
 
   useEffect(() => {
     if (avatarState?.success) {
@@ -1769,9 +1671,7 @@ export function SettingsClient({ user, family, pendingInvitesSent, pendingInvite
               </div>
 
               <p style={{ fontSize: 13, color: "#737373", margin: "0 0 8px", lineHeight: 1.45 }}>
-                Defina o <strong>dia do fechamento da fatura</strong> no calendário: o app usa só o <strong>dia do mês</strong> para
-                somar os gastos lançados na fatura em aberto (ciclo do cartão), alinhado ao que aparece no extrato. Adicione uma{" "}
-                <strong>imagem horizontal</strong> (formato cartão) com recorte no próprio app.
+                Adicione uma <strong>imagem horizontal</strong> (formato cartão) com recorte no próprio app.
               </p>
 
               <div style={{ display: "flex", flexDirection: "column" }}>
@@ -1779,8 +1679,6 @@ export function SettingsClient({ user, family, pendingInvitesSent, pendingInvite
                   <SettingsPaymentCardRow
                     key={card.id}
                     card={card}
-                    closingAction={closingAction as FormActionProp}
-                    closingPending={closingPending}
                   />
                 ))}
 
@@ -1798,20 +1696,11 @@ export function SettingsClient({ user, family, pendingInvitesSent, pendingInvite
                 cardPending={cardPending}
                 cardState={cardState}
               />
-              <p style={{ fontSize: 11, color: "#A3A3A3", margin: "4px 0 0", width: "100%" }}>
-                Opcional: use o mesmo calendário da aba Gastos — gravamos só o dia do mês como fechamento da fatura.
-              </p>
               {cardState?.error && (
                 <p style={{ color: "#DC2626", fontSize: 13, margin: 0 }}>{cardState.error}</p>
               )}
               {cardState?.success && (
                 <p style={{ color: "#0F8F4E", fontSize: 13, margin: 0 }}>{cardState.success}</p>
-              )}
-              {closingState?.error && (
-                <p style={{ color: "#DC2626", fontSize: 13, margin: "8px 0 0" }}>{closingState.error}</p>
-              )}
-              {closingState?.success && (
-                <p style={{ color: "#0F8F4E", fontSize: 13, margin: "8px 0 0" }}>{closingState.success}</p>
               )}
             </div>
           )}

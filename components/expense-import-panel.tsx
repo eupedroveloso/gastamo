@@ -10,6 +10,7 @@ type Step = "upload" | "loading" | "review" | "success";
 type ExtractedExpense = {
   id: string;
   name: string;
+  invoiceId: string;
   amount: number;
   date: string;
   type: string;
@@ -85,7 +86,8 @@ export function ExpenseImportPanel({ categories, cards, members, onClose }: Prop
         type?: string;
       }>).map((e, i) => ({
         id: `${i}-${Date.now()}`,
-        name: String(e.name ?? ""),
+        name: "",
+        invoiceId: String(e.name ?? ""),
         amount: Number(e.amount) || 0,
         date: String(e.date ?? getTodayBrazilYMD()),
         type: String(e.type ?? "avulsa"),
@@ -121,16 +123,19 @@ export function ExpenseImportPanel({ categories, cards, members, onClose }: Prop
     setIsImporting(true);
     setError(null);
 
+    const currentMonth = getTodayBrazilYMD().slice(0, 7);
     const result = await bulkCreateExpenses(
       selected.map((e) => ({
         name: e.name,
+        invoiceId: e.invoiceId || undefined,
         amount: e.amount,
         date: e.date,
         type: e.type,
         categoryId: categoryId || undefined,
         responsibleId,
         cardId: cardId || undefined,
-      }))
+      })),
+      currentMonth,
     );
 
     setIsImporting(false);
@@ -420,14 +425,14 @@ export function ExpenseImportPanel({ categories, cards, members, onClose }: Prop
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "32px 1fr 90px 110px 90px 32px",
+                    gridTemplateColumns: "32px 1fr 1fr 90px 110px 90px 32px",
                     gap: "8px",
                     padding: "8px 12px",
                     background: "var(--color-bg-subtle)",
                     borderBottom: "1px solid var(--color-border-muted)",
                   }}
                 >
-                  {["", "Nome", "Valor (R$)", "Data", "Tipo", ""].map((h, i) => (
+                  {["", "Nome", "Identificador", "Valor (R$)", "Data", "Tipo", ""].map((h, i) => (
                     <span
                       key={i}
                       style={{
@@ -449,7 +454,7 @@ export function ExpenseImportPanel({ categories, cards, members, onClose }: Prop
                       key={expense.id}
                       style={{
                         display: "grid",
-                        gridTemplateColumns: "32px 1fr 90px 110px 90px 32px",
+                        gridTemplateColumns: "32px 1fr 1fr 90px 110px 90px 32px",
                         gap: "8px",
                         padding: "8px 12px",
                         borderBottom: "1px solid var(--color-border-muted)",
@@ -469,6 +474,13 @@ export function ExpenseImportPanel({ categories, cards, members, onClose }: Prop
                         onChange={(e) => updateExpense(expense.id, "name", e.target.value)}
                         style={inputStyle}
                         placeholder="Nome do gasto"
+                      />
+                      <input
+                        type="text"
+                        value={expense.invoiceId}
+                        onChange={(e) => updateExpense(expense.id, "invoiceId", e.target.value)}
+                        style={{ ...inputStyle, color: "var(--color-fg-subtle)" }}
+                        placeholder="Identificador"
                       />
                       <input
                         type="number"

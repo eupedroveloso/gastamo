@@ -509,15 +509,11 @@ export function Calendar({
 
   const displayValue = value
     ? competenceMonthLabel && /^\d{4}-\d{2}-\d{2}$/.test(value)
-      ? new Date(
-          parseInt(value.slice(0, 4), 10),
-          parseInt(value.slice(5, 7), 10) - 1,
-          1,
-        ).toLocaleDateString("pt-BR", { month: "long", year: "numeric" })
+      ? `${MONTHS[parseInt(value.slice(5, 7), 10) - 1].toLowerCase()} de ${value.slice(0, 4)}`
       : dayOfMonthLabel && /^\d{4}-\d{2}-(\d{2})$/.test(value)
         ? `Dia ${parseInt(value.slice(8, 10), 10)}`
         : selectedDate
-          ? selectedDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })
+          ? `${String(selectedDate.getUTCDate()).padStart(2, "0")}/${String(selectedDate.getUTCMonth() + 1).padStart(2, "0")}/${selectedDate.getUTCFullYear()}`
           : ""
     : "";
 
