@@ -25,6 +25,10 @@ export function DonutChart({
   const center = size / 2;
   const total = segments.reduce((acc, s) => acc + s.value, 0);
 
+  // Gap fixo em pixels entre cada segmento para ficarem lado a lado sem sobrepor
+  const GAP = 3;
+  const totalGap = GAP * segments.length;
+
   let cumulativePercent = 0;
 
   return (
@@ -32,8 +36,15 @@ export function DonutChart({
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
         {segments.map((segment, i) => {
           const percent = total > 0 ? segment.value / total : 0;
-          const dashLength = circumference * percent;
-          const dashOffset = circumference * (1 - cumulativePercent) + circumference * 0.25;
+          // Reduz o arco pelo gap para criar separação visual
+          const rawDash = circumference * percent;
+          const dashLength = Math.max(0, rawDash - GAP);
+          // Offset: começa no topo (12h) acumulando fatia + gap de cada segmento anterior
+          const dashOffset =
+            circumference * (1 - cumulativePercent) +
+            circumference * 0.25 +
+            (totalGap / 2) -
+            i * GAP;
           cumulativePercent += percent;
 
           return (
@@ -47,7 +58,7 @@ export function DonutChart({
               strokeWidth={strokeWidth}
               strokeDasharray={`${dashLength} ${circumference - dashLength}`}
               strokeDashoffset={dashOffset}
-              strokeLinecap="round"
+              strokeLinecap="butt"
               style={{ transition: "stroke-dasharray 0.3s, stroke-dashoffset 0.3s" }}
             />
           );
