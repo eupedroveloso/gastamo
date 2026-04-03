@@ -20,7 +20,9 @@ function normalizePgSslMode(url: string): string {
 function createPrismaClient() {
   const raw = requireDatabaseUrl();
   const url = normalizePgSslMode(raw);
-  const adapter = new PrismaPg({ connectionString: url });
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const adapter = new PrismaPg({ connectionString: url, max: 10, idleTimeoutMillis: 30_000, connectionTimeoutMillis: 10_000 } as any);
 
   return new PrismaClient({
     adapter,

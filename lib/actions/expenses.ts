@@ -27,8 +27,8 @@ export async function createExpense(
   const totalInstallmentsStr = formData.get("totalInstallments") as string;
   const currentInstallmentStr = formData.get("currentInstallment") as string;
 
-  if (!name || !dateStr || !responsibleId) {
-    return { error: "Preencha os campos obrigatórios: nome, data e responsável" };
+  if (!name || !responsibleId) {
+    return { error: "Preencha os campos obrigatórios: nome e responsável" };
   }
 
   const amount =
@@ -52,16 +52,15 @@ export async function createExpense(
     totalInstallments >= 2 &&
     billingYmForm != null;
 
-  const responsibleRow = await db.user.findFirst({
-    where: { id: responsibleId },
-    select: { name: true },
-  });
+  // Busca responsável e outros membros em paralelo — nenhum depende do outro
+  const [responsibleRow, otherMembers] = await Promise.all([
+    db.user.findFirst({ where: { id: responsibleId }, select: { name: true } }),
+    db.familyMember.findMany({
+      where: { familyId: familyMember.familyId, userId: { not: session.userId } },
+      select: { userId: true },
+    }),
+  ]);
   const responsibleLabel = responsibleRow?.name ?? "—";
-
-  const otherMembers = await db.familyMember.findMany({
-    where: { familyId: familyMember.familyId, userId: { not: session.userId } },
-    select: { userId: true },
-  });
 
   const notifyCreated = async (payload: { expenseId?: string; description: string }) => {
     if (otherMembers.length === 0) return;
@@ -84,79 +83,84 @@ export async function createExpense(
     }
   };
 
-  if (shouldSpreadParcels && totalInstallments && billingYmForm) {
-    // billingYmForm é o mês da parcela `currentInstallment`; parcela 1 fica mais atrás
-    const currentInst = currentInstallment ?? 1;
-    const firstYm = addCivilMonths(billingYmForm, -(currentInst - 1));
-    const rows = Array.from({ length: totalInstallments }, (_, i) => {
-      const ym = billingYmForParcelIndex(firstYm, null, i);
-      const rowDate = expenseDateForParcelRow(i === 0 ? 0 : i, expenseDate, ym, null);
-      return {
-        name,
-        invoiceId: invoiceId || null,
-        date: rowDate,
-        billingYm: ym,
-        amount,
-        type: "parcelada" as const,
-        totalInstallments,
-        currentInstallment: i + 1,
-        familyId: familyMember.familyId,
-        categoryId: categoryId || null,
-        responsibleId,
-        cardId: cid,
-      };
-    });
-    await db.expense.createMany({ data: rows });
-    const amountFmt = amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-    await notifyCreated({
-      description: `${responsibleLabel} registrou: ${name} · ${totalInstallments}x de ${amountFmt}/parcela`,
-    });
-  } else if (type === "fixa") {
-    // Gastos fixos: gera 24 meses consecutivos a partir do mês selecionado
-    const startYm = billingYmForm ?? getTodayBrazilYMD().slice(0, 7);
-    const rows = Array.from({ length: 24 }, (_, i) => ({
-      name,
-      invoiceId: invoiceId || null,
-      date: expenseDate,
-      billingYm: addCivilMonths(startYm, i),
-      amount,
-      type: "fixa" as const,
-      totalInstallments: null,
-      currentInstallment: null,
-      familyId: familyMember.familyId,
-      categoryId: categoryId || null,
-      responsibleId,
-      cardId: cid,
-    }));
-    await db.expense.createMany({ data: rows });
-    const amountFmt = amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-    await notifyCreated({
-      description: `${responsibleLabel} registrou gasto fixo: ${name} · ${amountFmt}/mês`,
-    });
-  } else {
-    const billingYm = billingYmForm ?? getTodayBrazilYMD().slice(0, 7);
-    const expense = await db.expense.create({
-      data: {
+  try {
+    if (shouldSpreadParcels && totalInstallments && billingYmForm) {
+      // billingYmForm é o mês da parcela `currentInstallment`; parcela 1 fica mais atrás
+      const currentInst = currentInstallment ?? 1;
+      const firstYm = addCivilMonths(billingYmForm, -(currentInst - 1));
+      const rows = Array.from({ length: totalInstallments }, (_, i) => {
+        const ym = billingYmForParcelIndex(firstYm, null, i);
+        const rowDate = expenseDateForParcelRow(i, expenseDate, ym, null);
+        return {
+          name,
+          invoiceId: invoiceId || null,
+          date: rowDate,
+          billingYm: ym,
+          amount,
+          type: "parcelada" as const,
+          totalInstallments,
+          currentInstallment: i + 1,
+          familyId: familyMember.familyId,
+          categoryId: categoryId || null,
+          responsibleId,
+          cardId: cid,
+        };
+      });
+      await db.expense.createMany({ data: rows });
+      const amountFmt = amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+      await notifyCreated({
+        description: `${responsibleLabel} registrou: ${name} · ${totalInstallments}x de ${amountFmt}/parcela`,
+      });
+    } else if (type === "fixa") {
+      // Gastos fixos: gera 24 meses consecutivos a partir do mês selecionado
+      const startYm = billingYmForm ?? getTodayBrazilYMD().slice(0, 7);
+      const rows = Array.from({ length: 24 }, (_, i) => ({
         name,
         invoiceId: invoiceId || null,
         date: expenseDate,
-        billingYm,
+        billingYm: addCivilMonths(startYm, i),
         amount,
-        type,
-        totalInstallments,
-        currentInstallment,
+        type: "fixa" as const,
+        totalInstallments: null,
+        currentInstallment: null,
         familyId: familyMember.familyId,
         categoryId: categoryId || null,
         responsibleId,
         cardId: cid,
-      },
-      include: { responsible: { select: { name: true } } },
-    });
-    const amountFmt = amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-    await notifyCreated({
-      expenseId: expense.id,
-      description: `${expense.responsible.name} registrou: ${name} · ${amountFmt}`,
-    });
+      }));
+      await db.expense.createMany({ data: rows });
+      const amountFmt = amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+      await notifyCreated({
+        description: `${responsibleLabel} registrou gasto fixo: ${name} · ${amountFmt}/mês`,
+      });
+    } else {
+      const billingYm = billingYmForm ?? getTodayBrazilYMD().slice(0, 7);
+      const expense = await db.expense.create({
+        data: {
+          name,
+          invoiceId: invoiceId || null,
+          date: expenseDate,
+          billingYm,
+          amount,
+          type,
+          totalInstallments,
+          currentInstallment,
+          familyId: familyMember.familyId,
+          categoryId: categoryId || null,
+          responsibleId,
+          cardId: cid,
+        },
+        include: { responsible: { select: { name: true } } },
+      });
+      const amountFmt = amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+      await notifyCreated({
+        expenseId: expense.id,
+        description: `${expense.responsible.name} registrou: ${name} · ${amountFmt}`,
+      });
+    }
+  } catch (e) {
+    console.error("[createExpense] erro ao salvar gasto:", e);
+    return { error: "Erro ao salvar o gasto. Tente novamente." };
   }
 
   revalidatePath("/");
@@ -237,18 +241,19 @@ export async function deleteExpense(expenseId: string): Promise<void> {
   if (!session) return;
 
   try {
-    const expense = await db.expense.findUnique({
-      where: { id: expenseId },
-      include: {
-        responsible: { select: { name: true } },
-        family: { include: { members: { select: { userId: true } } } },
-      },
-    });
+    // Busca dados para notificação e deleta em paralelo
+    const [expense] = await Promise.all([
+      db.expense.findUnique({
+        where: { id: expenseId },
+        include: {
+          responsible: { select: { name: true } },
+          family: { include: { members: { select: { userId: true } } } },
+        },
+      }),
+      db.expense.delete({ where: { id: expenseId } }),
+    ]);
 
     if (expense) {
-      await db.expense.delete({ where: { id: expenseId } });
-
-      // Notify other family members
       const otherMembers = expense.family.members.filter((m) => m.userId !== session.userId);
       if (otherMembers.length > 0) {
         const amountFmt = expense.amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
