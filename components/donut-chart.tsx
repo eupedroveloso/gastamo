@@ -13,7 +13,7 @@ interface DonutChartProps {
   centerSublabel?: string;
 }
 
-const GAP = 3; // px de gap entre segmentos
+const GAP = 4; // px de gap entre segmentos
 
 export function DonutChart({
   segments,
@@ -26,7 +26,6 @@ export function DonutChart({
   const circumference = 2 * Math.PI * radius;
   const center = size / 2;
   const total = segments.reduce((acc, s) => acc + s.value, 0);
-  const totalGap = GAP * segments.length;
 
   let cumulativePercent = 0;
 
@@ -34,7 +33,7 @@ export function DonutChart({
     <div style={{ position: "relative", width: size, height: size }}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
         <defs>
-          {/* erode 2px → dilate 2px: arredonda apenas cantos convexos das extremidades */}
+          {/* erode 2px → dilate 2px: arredonda apenas os cantos convexos das extremidades */}
           <filter id="round-corners-2" x="-4%" y="-4%" width="108%" height="108%">
             <feMorphology operator="erode" radius="2" in="SourceGraphic" result="eroded" />
             <feMorphology operator="dilate" radius="2" in="eroded" />
@@ -44,14 +43,10 @@ export function DonutChart({
         {segments.map((segment, i) => {
           const percent = total > 0 ? segment.value / total : 0;
           const dashLength = Math.max(0, circumference * percent - GAP);
-          const dashOffset =
-            circumference * (1 - cumulativePercent) +
-            circumference * 0.25 +
-            totalGap / 2 -
-            i * GAP;
+          // Fórmula padrão: posiciona no topo (12h) e acumula cada fatia sem ajuste extra
+          const dashOffset = circumference * (1 - cumulativePercent) + circumference * 0.25;
           cumulativePercent += percent;
 
-          // Primeiro segmento = orçamento livre (fundo), sem arredondamento
           const isBackground = i === 0;
 
           return (
