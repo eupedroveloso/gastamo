@@ -3,6 +3,7 @@
 interface DonutSegment {
   value: number;
   color: string;
+  linecap?: "butt" | "round" | "square";
 }
 
 interface DonutChartProps {
@@ -58,7 +59,7 @@ export function DonutChart({
               strokeWidth={strokeWidth}
               strokeDasharray={`${dashLength} ${circumference - dashLength}`}
               strokeDashoffset={dashOffset}
-              strokeLinecap="butt"
+              strokeLinecap={segment.linecap ?? "round"}
               style={{ transition: "stroke-dasharray 0.3s, stroke-dashoffset 0.3s" }}
             />
           );
