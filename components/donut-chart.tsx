@@ -13,7 +13,7 @@ interface DonutChartProps {
   centerSublabel?: string;
 }
 
-const GAP = 4; // px de gap entre segmentos
+const GAP = 4;
 
 export function DonutChart({
   segments,
@@ -27,31 +27,44 @@ export function DonutChart({
   const center = size / 2;
   const total = segments.reduce((acc, s) => acc + s.value, 0);
 
-  let cumulativePercent = 0;
+  // Segmento 0 = fundo (orçamento livre); segmentos 1+ = gastos coloridos
+  const [background, ...foreground] = segments;
+
+  let cumulativePercent = total > 0 ? (background?.value ?? 0) / total : 0;
 
   return (
     <div style={{ position: "relative", width: size, height: size }}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
         <defs>
-          {/* erode 2px → dilate 2px: arredonda apenas os cantos convexos das extremidades */}
           <filter id="round-corners-2" x="-4%" y="-4%" width="108%" height="108%">
             <feMorphology operator="erode" radius="2" in="SourceGraphic" result="eroded" />
             <feMorphology operator="dilate" radius="2" in="eroded" />
           </filter>
         </defs>
 
-        {segments.map((segment, i) => {
+        {/* Anel de fundo: anel completo, sem corte, sem filtro */}
+        {background && (
+          <circle
+            cx={center}
+            cy={center}
+            r={radius}
+            fill="none"
+            stroke={background.color}
+            strokeWidth={strokeWidth}
+          />
+        )}
+
+        {/* Segmentos coloridos: posicionados sobre o fundo */}
+        {foreground.map((segment, idx) => {
           const percent = total > 0 ? segment.value / total : 0;
           const dashLength = Math.max(0, circumference * percent - GAP);
-          // Fórmula padrão: posiciona no topo (12h) e acumula cada fatia sem ajuste extra
-          const dashOffset = circumference * (1 - cumulativePercent) + circumference * 0.25;
+          const dashOffset =
+            circumference * (1 - cumulativePercent) + circumference * 0.25;
           cumulativePercent += percent;
-
-          const isBackground = i === 0;
 
           return (
             <circle
-              key={i}
+              key={idx}
               cx={center}
               cy={center}
               r={radius}
@@ -61,7 +74,7 @@ export function DonutChart({
               strokeDasharray={`${dashLength} ${circumference - dashLength}`}
               strokeDashoffset={dashOffset}
               strokeLinecap="butt"
-              filter={isBackground ? undefined : "url(#round-corners-2)"}
+              filter="url(#round-corners-2)"
               style={{ transition: "stroke-dasharray 0.3s, stroke-dashoffset 0.3s" }}
             />
           );
