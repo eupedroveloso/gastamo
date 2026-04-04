@@ -34,7 +34,7 @@ export default async function DashboardPage({
     totalSpent > 0
       ? [
           // Orçamento livre primeiro — renderiza por baixo dos outros segmentos
-          ...(freeBudget > 0 ? [{ value: freeBudget, color: "#F5F5F5", linecap: "butt" as const }] : []),
+          ...(freeBudget > 0 ? [{ value: freeBudget, color: "#F5F5F5" }] : []),
           { value: typeStats.avulsa || 0.001, color: "#99E83A" },
           { value: typeStats.fixa || 0.001, color: "#D6F5E3" },
           { value: typeStats.parcelada || 0.001, color: "#0C7341" },
