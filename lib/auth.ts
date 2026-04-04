@@ -17,7 +17,14 @@ async function _getSession() {
 
   const session = await db.session.findUnique({
     where: { token },
-    include: { user: true },
+    include: {
+      user: {
+        include: {
+          // familyId incluído aqui para evitar round-trip extra em cada página
+          memberships: { select: { familyId: true }, take: 1 },
+        },
+      },
+    },
   });
 
   if (!session || session.expiresAt < new Date()) {

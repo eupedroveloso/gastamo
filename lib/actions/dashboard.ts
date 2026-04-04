@@ -16,33 +16,14 @@ export async function getDashboardData(params: DashboardQueryParams = {}) {
   const userId = session.userId;
   const user = session.user;
 
-  const familyMember = await db.familyMember.findFirst({
-    where: { userId },
-    select: {
-      familyId: true,
-      family: {
-        select: {
-          id: true,
-          name: true,
-          budget: true,
-          members: {
-            select: {
-              userId: true,
-              role: true,
-              budget: true,
-              user: { select: { name: true, avatar: true } },
-            },
-          },
-        },
-      },
-    },
-  });
+  // familyId vem da sessão — sem round-trip extra para familyMember.findFirst
+  const familyId = session.user.memberships[0]?.familyId;
 
   const period = resolveDashboardBillingPeriod(params.from, params.to);
   const billingYmFilter = { gte: period.ymFrom, lte: period.ymTo };
   const dateFilterCivil = { gte: period.start, lte: period.end };
 
-  if (!familyMember) {
+  if (!familyId) {
     return {
       user,
       family: null,
@@ -59,9 +40,6 @@ export async function getDashboardData(params: DashboardQueryParams = {}) {
     };
   }
 
-  const family = familyMember.family;
-  const familyId = family.id;
-
   const expenseWhereInPeriod = {
     familyId,
     OR: [
@@ -70,7 +48,33 @@ export async function getDashboardData(params: DashboardQueryParams = {}) {
     ],
   };
 
-  const [expenses, inPeriodRows, categories, cards] = await Promise.all([
+  // Todas as queries em paralelo — sem round-trip sequential
+  const [
+    familyMember,
+    expenses,
+    typeGroups,
+    memberGroups,
+    categoryGroups,
+    cardGroups,
+    categories,
+    cards,
+  ] = await Promise.all([
+    db.familyMember.findFirst({
+      where: { userId, familyId },
+      select: {
+        family: {
+          select: {
+            id: true, name: true, budget: true,
+            members: {
+              select: {
+                userId: true, role: true, budget: true,
+                user: { select: { name: true, avatar: true } },
+              },
+            },
+          },
+        },
+      },
+    }),
     db.expense.findMany({
       where: expenseWhereInPeriod,
       orderBy: [{ billingYm: "desc" }, { date: "desc" }],
@@ -82,15 +86,26 @@ export async function getDashboardData(params: DashboardQueryParams = {}) {
         card: { select: { id: true, name: true, image: true } },
       },
     }),
-    db.expense.findMany({
+    // groupBy no banco — muito mais eficiente que buscar todas as rows
+    db.expense.groupBy({
+      by: ["type"],
       where: expenseWhereInPeriod,
-      select: {
-        amount: true,
-        type: true,
-        responsibleId: true,
-        categoryId: true,
-        cardId: true,
-      },
+      _sum: { amount: true },
+    }),
+    db.expense.groupBy({
+      by: ["responsibleId"],
+      where: expenseWhereInPeriod,
+      _sum: { amount: true },
+    }),
+    db.expense.groupBy({
+      by: ["categoryId"],
+      where: expenseWhereInPeriod,
+      _sum: { amount: true },
+    }),
+    db.expense.groupBy({
+      by: ["cardId"],
+      where: expenseWhereInPeriod,
+      _sum: { amount: true },
     }),
     db.category.findMany({
       where: { familyId },
@@ -102,44 +117,46 @@ export async function getDashboardData(params: DashboardQueryParams = {}) {
     }),
   ]);
 
-  type SimpleRow = {
-    amount: number;
-    type: string;
-    responsibleId: string;
-    categoryId: string | null;
-    cardId: string | null;
-  };
+  if (!familyMember) {
+    return {
+      user, family: null, expenses: [], totalSpent: 0,
+      daysInMonth: period.daysInPeriod,
+      period: { from: period.from, to: period.to, ymFrom: period.ymFrom, ymTo: period.ymTo },
+      periodLabel: period.periodLabel,
+      categories: [], cards: [], spendByPayment: [], memberSpending: [],
+      typeStats: { avulsa: 0, fixa: 0, parcelada: 0 },
+    };
+  }
+
+  const family = familyMember.family!;
+  const daysInMonth = period.daysInPeriod;
+
+  // Agrega resultados dos groupBy
+  let totalSpent = 0;
+  let avulsa = 0, fixa = 0, parcelada = 0;
+
+  for (const g of typeGroups) {
+    const amt = g._sum.amount ?? 0;
+    totalSpent += amt;
+    if (g.type === "fixa") fixa += amt;
+    else if (g.type === "parcelada") parcelada += amt;
+    else avulsa += amt;
+  }
+
+  const memberSpendMap = new Map<string, number>(
+    memberGroups.map((g) => [g.responsibleId, g._sum.amount ?? 0])
+  );
+  const categorySpendMap = new Map<string | null, number>(
+    categoryGroups.map((g) => [g.categoryId, g._sum.amount ?? 0])
+  );
+  const cardSpendMap = new Map<string | null, number>(
+    cardGroups.map((g) => [g.cardId, g._sum.amount ?? 0])
+  );
+
   type CategoryRow = { id: string; name: string; limitAmount: number };
   type Member = { userId: string; role: string; budget: number | null; user: { name: string; avatar: string | null } };
 
-  const daysInMonth = period.daysInPeriod;
-
-  let totalSpent = 0;
-  let avulsa = 0;
-  let fixa = 0;
-  let parcelada = 0;
-
-  const memberSpendMap = new Map<string, number>();
-  const categorySpendMap = new Map<string, number>();
-  const cardSpendMap = new Map<string | null, number>();
-
-  const addToMap = (map: Map<string, number>, key: string | null, value: number) => {
-    if (value === 0) return;
-    if (key == null) return;
-    map.set(key, (map.get(key) ?? 0) + value);
-  };
-
-  for (const e of inPeriodRows as SimpleRow[]) {
-    totalSpent += e.amount;
-    if (e.type === "fixa") fixa += e.amount;
-    else if (e.type === "parcelada") parcelada += e.amount;
-    else avulsa += e.amount;
-    memberSpendMap.set(e.responsibleId, (memberSpendMap.get(e.responsibleId) ?? 0) + e.amount);
-    addToMap(categorySpendMap, e.categoryId, e.amount);
-    cardSpendMap.set(e.cardId, (cardSpendMap.get(e.cardId) ?? 0) + e.amount);
-  }
-
-  const categoriesWithStats = (categories as CategoryRow[]).map((cat: CategoryRow) => {
+  const categoriesWithStats = (categories as CategoryRow[]).map((cat) => {
     const spent = categorySpendMap.get(cat.id) ?? 0;
     const percentage = cat.limitAmount > 0 ? Math.min(Math.round((spent / cat.limitAmount) * 100), 100) : 0;
     return { id: cat.id, name: cat.name, limitAmount: cat.limitAmount, spent, percentage };
@@ -166,28 +183,17 @@ export async function getDashboardData(params: DashboardQueryParams = {}) {
 
   type CardRow = { id: string; name: string; statementClosingDay: number | null; image: string | null };
   const spendByPayment = (cards as CardRow[]).map((c) => ({
-    id: c.id,
-    name: c.name,
-    image: c.image,
+    id: c.id, name: c.name, image: c.image,
     amount: cardSpendMap.get(c.id) ?? 0,
   }));
   const semPagamento = cardSpendMap.get(null) ?? 0;
   if (semPagamento > 0) {
-    spendByPayment.push({
-      id: "__sem_pagamento__",
-      name: "Sem pagamento",
-      image: null,
-      amount: semPagamento,
-    });
+    spendByPayment.push({ id: "__sem_pagamento__", name: "Sem pagamento", image: null, amount: semPagamento });
   }
   spendByPayment.sort((a, b) => b.amount - a.amount);
 
   return {
-    user,
-    family,
-    expenses,
-    totalSpent,
-    daysInMonth,
+    user, family, expenses, totalSpent, daysInMonth,
     period: { from: period.from, to: period.to, ymFrom: period.ymFrom, ymTo: period.ymTo },
     periodLabel: period.periodLabel,
     categories: categoriesWithStats,
