@@ -27,22 +27,15 @@ export function DonutChart({
   const center = size / 2;
   const total = segments.reduce((acc, s) => acc + s.value, 0);
 
-  // Segmento 0 = fundo (orçamento livre); segmentos 1+ = gastos coloridos
   const [background, ...foreground] = segments;
 
-  let cumulativePercent = total > 0 ? (background?.value ?? 0) / total : 0;
+  // Segmentos coloridos acumulam a partir de 0 (topo) — fundo fica por baixo como anel completo
+  let cumulativePercent = 0;
 
   return (
     <div style={{ position: "relative", width: size, height: size }}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <defs>
-          <filter id="round-corners-2" x="-4%" y="-4%" width="108%" height="108%">
-            <feMorphology operator="erode" radius="2" in="SourceGraphic" result="eroded" />
-            <feMorphology operator="dilate" radius="2" in="eroded" />
-          </filter>
-        </defs>
-
-        {/* Anel de fundo: anel completo, sem corte, sem filtro */}
+        {/* Anel de fundo: anel completo sem corte */}
         {background && (
           <circle
             cx={center}
@@ -54,7 +47,7 @@ export function DonutChart({
           />
         )}
 
-        {/* Segmentos coloridos: posicionados sobre o fundo */}
+        {/* Segmentos coloridos por cima, partindo do topo */}
         {foreground.map((segment, idx) => {
           const percent = total > 0 ? segment.value / total : 0;
           const dashLength = Math.max(0, circumference * percent - GAP);
@@ -73,8 +66,7 @@ export function DonutChart({
               strokeWidth={strokeWidth}
               strokeDasharray={`${dashLength} ${circumference - dashLength}`}
               strokeDashoffset={dashOffset}
-              strokeLinecap="butt"
-              filter="url(#round-corners-2)"
+              strokeLinecap="round"
               style={{ transition: "stroke-dasharray 0.3s, stroke-dashoffset 0.3s" }}
             />
           );
