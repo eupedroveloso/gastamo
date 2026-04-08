@@ -21,14 +21,17 @@ function createPrismaClient() {
   const raw = requireDatabaseUrl();
   const url = normalizePgSslMode(raw);
 
-  // Em serverless (Vercel) cada invocação é isolada — pool de 1 conexão evita
-  // esgotamento do limite de conexões do banco quando há invocações paralelas.
+  // Em serverless (Vercel) funções "warm" são reutilizadas entre invocações.
+  // Conexões ociosas no pool ficam abertas e o banco as termina após alguns
+  // minutos — causando "Connection terminated" na próxima query.
+  // Solução: idleTimeoutMillis mínimo (1ms) descarta a conexão imediatamente
+  // após uso, forçando uma nova conexão a cada invocação sem conexões stale.
   const isServerless = process.env.NODE_ENV === "production";
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const adapter = new PrismaPg({
     connectionString: url,
-    max: isServerless ? 1 : 10,
-    idleTimeoutMillis: isServerless ? 1_000 : 30_000,
+    max: isServerless ? 2 : 10,
+    idleTimeoutMillis: isServerless ? 1 : 30_000,
     connectionTimeoutMillis: 10_000,
   } as any);
 
