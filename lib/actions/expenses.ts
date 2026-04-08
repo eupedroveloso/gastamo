@@ -112,8 +112,11 @@ export async function createExpense(
         description: `${responsibleLabel} registrou: ${name} · ${totalInstallments}x de ${amountFmt}/parcela`,
       });
     } else if (type === "fixa") {
-      // Gastos fixos: gera 24 meses consecutivos a partir do mês selecionado
+      // Gastos fixos: gera 24 meses iniciais e um recurringGroupId compartilhado.
+      // A função extendRecurringExpenses (chamada no dashboard) cria os meses
+      // seguintes indefinidamente conforme o usuário avança no tempo.
       const startYm = billingYmForm ?? getTodayBrazilYMD().slice(0, 7);
+      const recurringGroupId = `fixa_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
       const rows = Array.from({ length: 24 }, (_, i) => ({
         name,
         invoiceId: invoiceId || null,
@@ -127,6 +130,7 @@ export async function createExpense(
         categoryId: categoryId || null,
         responsibleId,
         cardId: cid,
+        recurringGroupId,
       }));
       await db.expense.createMany({ data: rows });
       const amountFmt = amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });

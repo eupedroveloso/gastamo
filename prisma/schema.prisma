@@ -92,6 +92,10 @@ model Expense {
   pending            Boolean  @default(false)
   createdAt          DateTime @default(now())
 
+  /// ID compartilhado por todas as parcelas de um gasto recorrente (fixa).
+  /// Permite estender o histórico indefinidamente sem alterar as linhas existentes.
+  recurringGroupId String?
+
   familyId      String
   categoryId    String?
   responsibleId String

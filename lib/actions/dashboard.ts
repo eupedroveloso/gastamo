@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { resolveDashboardBillingPeriod } from "@/lib/dashboard-period";
 import { LEGACY_EXPENSE_BILLING_YM } from "@/lib/expense-billing-ym";
 import { sortMembersForBudgetDisplay } from "@/lib/member-display-order";
+import { extendRecurringExpenses } from "@/lib/recurring-expenses";
+import { addCivilMonths } from "@/lib/billing-ym-advance";
 
 export type DashboardQueryParams = {
   from?: string | null;
@@ -22,6 +24,14 @@ export async function getDashboardData(params: DashboardQueryParams = {}) {
   const period = resolveDashboardBillingPeriod(params.from, params.to);
   const billingYmFilter = { gte: period.ymFrom, lte: period.ymTo };
   const dateFilterCivil = { gte: period.start, lte: period.end };
+
+  // Estende gastos fixos até 3 meses além do período consultado.
+  // Custo: 1 groupBy (rápido) na maioria das chamadas; createMany só quando necessário.
+  if (familyId) {
+    await extendRecurringExpenses(familyId, addCivilMonths(period.ymTo, 3)).catch(
+      (e) => console.error("[dashboard] extendRecurringExpenses error:", e)
+    );
+  }
 
   if (!familyId) {
     return {
