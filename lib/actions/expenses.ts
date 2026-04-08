@@ -163,7 +163,6 @@ export async function createExpense(
     return { error: "Erro ao salvar o gasto. Tente novamente." };
   }
 
-  revalidatePath("/");
   revalidatePath("/transactions");
   return { success: true };
 }

@@ -2,6 +2,7 @@
 
 import type { CSSProperties } from "react";
 import { useActionState, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ChevronDownIcon, CloseIcon, PlusIcon } from "./icons";
 import { Calendar } from "./calendar";
 import { createExpense, getInvoiceIdSuggestions } from "@/lib/actions/expenses";
@@ -105,6 +106,7 @@ const linkBtnStyle: CSSProperties = {
 };
 
 export function AddExpensePanel({ open, onClose, categories, cards, members }: Props) {
+  const router = useRouter();
   const [state, formAction, isPending] = useActionState(createExpense, null);
   const [selectedType, setSelectedType] = useState("avulsa");
   const [installments, setInstallments] = useState("12");
@@ -156,8 +158,9 @@ export function AddExpensePanel({ open, onClose, categories, cards, members }: P
   useEffect(() => {
     if (state?.success) {
       onClose();
+      router.refresh();
     }
-  }, [state, onClose]);
+  }, [state, onClose, router]);
 
   if (!open) return null;
 

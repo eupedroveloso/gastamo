@@ -138,12 +138,12 @@ export function DashboardPageClient(props: DashboardPageClientProps) {
         >
           <AvatarStack members={memberSpending} />
           <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
-            <span style={{ fontWeight: 600, fontSize: 14, color: "var(--color-fg-inverse)", lineHeight: 1.5 }}>Orçamento Geral</span>
+            <span style={{ fontWeight: 600, fontSize: 14, color: "var(--color-fg-inverse)", lineHeight: 1.5 }}>Saldo Disponível</span>
             <span style={{ fontWeight: 700, fontSize: 48, lineHeight: 1.1, letterSpacing: "-1px", color: "var(--color-fg-inverse)" }}>
-              {formatBRL(totalBudget)}
+              {formatBRL(freeBudget)}
             </span>
             <span style={{ fontWeight: 600, fontSize: 14, color: "var(--color-fg-inverse)", lineHeight: 1.5 }}>
-              {formatBRL(dailyBudget)}/dia
+              {formatBRL(totalBudget)} orçamento total
             </span>
           </div>
         </div>
