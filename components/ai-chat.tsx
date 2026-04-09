@@ -93,12 +93,14 @@ function ConvItem({ conv, isActive, onClick, onDelete }: {
   const [showMenu, setShowMenu] = useState(false);
 
   return (
-    <div style={{ position: "relative" }}>
+    <div
+      style={{ position: "relative" }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => { setHovered(false); setShowMenu(false); }}
+    >
       <button
         type="button"
         onClick={onClick}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => { setHovered(false); setShowMenu(false); }}
         style={{
           width: "100%", minHeight: 40, padding: 10,
           background: isActive ? "#0A0A0A" : hovered ? "rgba(0,0,0,0.04)" : "transparent",
@@ -126,7 +128,6 @@ function ConvItem({ conv, isActive, onClick, onDelete }: {
       </button>
       {showMenu && (
         <div
-          onMouseLeave={() => setShowMenu(false)}
           style={{
             position: "absolute", right: 0, top: "100%", zIndex: 10,
             background: "#FFFFFF", border: "1px solid #E5E5E5", borderRadius: 8,
