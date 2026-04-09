@@ -572,7 +572,7 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
         const inAmount = expenseMatchesAmountSearch(e.amount, raw);
         if (!inName && !inInvoice && !inCardId && !inCardName && !inAmount) return false;
       }
-      if (filterMonth && e.billingYm !== filterMonth) return false;
+      if (filterMonth && !filterDateStart && !filterDateEnd && e.billingYm !== filterMonth) return false;
       if (filterType.size > 0 && !filterType.has(e.type)) return false;
       if (filterCategory.size > 0 && !filterCategory.has(e.category?.id ?? "")) return false;
       if (filterCard.size > 0 && !filterCard.has(e.card?.id ?? "")) return false;
