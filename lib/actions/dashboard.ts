@@ -59,16 +59,18 @@ export async function getDashboardData(params: DashboardQueryParams = {}) {
   };
 
   // Todas as queries em paralelo — sem round-trip sequential
-  const [
-    familyMember,
-    expenses,
-    typeGroups,
-    memberGroups,
-    categoryGroups,
-    cardGroups,
-    categories,
-    cards,
-  ] = await Promise.all([
+  let familyMember, expenses, typeGroups, memberGroups, categoryGroups, cardGroups, categories, cards;
+  try {
+    [
+      familyMember,
+      expenses,
+      typeGroups,
+      memberGroups,
+      categoryGroups,
+      cardGroups,
+      categories,
+      cards,
+    ] = await Promise.all([
     db.familyMember.findFirst({
       where: { userId, familyId },
       select: {
@@ -125,7 +127,11 @@ export async function getDashboardData(params: DashboardQueryParams = {}) {
       where: { familyId },
       select: { id: true, name: true, statementClosingDay: true, image: true },
     }),
-  ]);
+    ]);
+  } catch (e) {
+    console.error("[dashboard] DB query error:", e);
+    throw e;
+  }
 
   if (!familyMember) {
     return {

@@ -15,17 +15,23 @@ async function _getSession() {
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   if (!token) return null;
 
-  const session = await db.session.findUnique({
-    where: { token },
-    include: {
-      user: {
-        include: {
-          // familyId incluído aqui para evitar round-trip extra em cada página
-          memberships: { select: { familyId: true }, take: 1 },
+  let session;
+  try {
+    session = await db.session.findUnique({
+      where: { token },
+      include: {
+        user: {
+          include: {
+            // familyId incluído aqui para evitar round-trip extra em cada página
+            memberships: { select: { familyId: true }, take: 1 },
+          },
         },
       },
-    },
-  });
+    });
+  } catch (e) {
+    console.error("[auth] getSession DB error:", e);
+    return null;
+  }
 
   if (!session || session.expiresAt < new Date()) {
     if (session) await db.session.delete({ where: { id: session.id } }).catch(() => {});

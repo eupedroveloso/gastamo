@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useActionState, useEffect, useTransition } from "react";
+import { useState, useMemo, useActionState, useEffect, useTransition, useRef } from "react";
 import {
   FunnelDollarIcon,
   SearchIcon,
@@ -434,6 +434,76 @@ function SlidePanel({ children, onClose }: { children: React.ReactNode; onClose:
   );
 }
 
+function MultiCategorySelect({
+  categories,
+  selected,
+  onChange,
+}: {
+  categories: { id: string; name: string }[];
+  selected: Set<string>;
+  onChange: (next: Set<string>) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  const toggle = (id: string) => {
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    onChange(next);
+  };
+
+  const label = selected.size === 0
+    ? "Todas"
+    : selected.size === 1
+      ? categories.find((c) => selected.has(c.id))?.name ?? "1 selecionada"
+      : `${selected.size} selecionadas`;
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <div
+        onClick={() => setOpen((v) => !v)}
+        style={{ display: "flex", alignItems: "center", gap: 6, background: "#FFFFFF", border: "1px solid #F5F5F5", borderRadius: 12, padding: "6px 10px", cursor: "pointer" }}
+      >
+        <span style={{ flex: 1, fontSize: 13, color: selected.size > 0 ? "#0A0A0A" : "#A3A3A3", fontFamily: "inherit", userSelect: "none", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {label}
+        </span>
+        <ChevronDownIcon size={14} color="#A3A3A3" />
+      </div>
+      {open && (
+        <div style={{
+          position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 100,
+          background: "#FFFFFF", border: "1px solid #E5E5E5", borderRadius: 12,
+          boxShadow: "0 4px 16px rgba(0,0,0,0.08)", padding: "4px 0", minWidth: 160,
+        }}>
+          {categories.map((c) => (
+            <label
+              key={c.id}
+              style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 12px", cursor: "pointer", fontSize: 13, color: "#0A0A0A", fontFamily: "inherit" }}
+            >
+              <input
+                type="checkbox"
+                checked={selected.has(c.id)}
+                onChange={() => toggle(c.id)}
+                style={{ accentColor: "var(--color-bg-brand-strong)", cursor: "pointer" }}
+              />
+              {c.name}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Colunas: … responsável | fatura (competência) | data documental | valor | ações
 const COL_TEMPLATE = "32px minmax(150px, 2fr) 112px 112px 136px 112px 88px 96px 112px 68px";
 
@@ -442,7 +512,7 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
   const [filterMonth, setFilterMonth] = useState(() => getTodayBrazilYMD().slice(0, 7));
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [filterType, setFilterType] = useState("");
-  const [filterCategory, setFilterCategory] = useState("");
+  const [filterCategory, setFilterCategory] = useState<Set<string>>(new Set());
   const [filterCard, setFilterCard] = useState("");
   const [filterMember, setFilterMember] = useState("");
   const [filterDateStart, setFilterDateStart] = useState("");
@@ -502,7 +572,7 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
       }
       if (filterMonth && e.billingYm !== filterMonth) return false;
       if (filterType && e.type !== filterType) return false;
-      if (filterCategory && e.category?.id !== filterCategory) return false;
+      if (filterCategory.size > 0 && !filterCategory.has(e.category?.id ?? "")) return false;
       if (filterCard && e.card?.id !== filterCard) return false;
       if (filterMember && e.responsible.id !== filterMember) return false;
       if (filterDateStart || filterDateEnd) {
@@ -535,9 +605,9 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
     return { filteredCount: count, filteredAmountSum: total };
   }, [filtered]);
 
-  const hasActiveFilters = Boolean(filterType) || Boolean(filterCategory) || Boolean(filterCard) || Boolean(filterMember) || Boolean(filterDateStart) || Boolean(filterDateEnd);
+  const hasActiveFilters = Boolean(filterType) || filterCategory.size > 0 || Boolean(filterCard) || Boolean(filterMember) || Boolean(filterDateStart) || Boolean(filterDateEnd);
   const currentMonth = getTodayBrazilYMD().slice(0, 7);
-  const activeFilterCount = [filterType, filterCategory, filterCard, filterMember, filterDateStart, filterDateEnd].filter(Boolean).length;
+  const activeFilterCount = [filterType, filterCard, filterMember, filterDateStart, filterDateEnd].filter(Boolean).length + (filterCategory.size > 0 ? 1 : 0);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8, height: "100%" }}>
@@ -693,13 +763,6 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
                     all: "Todos",
                   },
                   {
-                    label: "Categoria",
-                    value: filterCategory,
-                    set: setFilterCategory,
-                    options: categories.map((c) => ({ value: c.id, label: c.name })),
-                    all: "Todas",
-                  },
-                  {
                     label: "Cartão",
                     value: filterCard,
                     set: setFilterCard,
@@ -734,6 +797,14 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
                   </div>
                 </div>
               ))}
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#525252" }}>Categoria</label>
+                <MultiCategorySelect
+                  categories={categories}
+                  selected={filterCategory}
+                  onChange={setFilterCategory}
+                />
+              </div>
             </div>
 
             {/* Linha 2: filtro de data do gasto */}
@@ -760,7 +831,7 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
                 type="button"
                 onClick={() => {
                   setFilterType("");
-                  setFilterCategory("");
+                  setFilterCategory(new Set());
                   setFilterCard("");
                   setFilterMember("");
                   setFilterDateStart("");
@@ -1153,7 +1224,7 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
                   setSearch("");
                   setFilterMonth(currentMonth);
                   setFilterType("");
-                  setFilterCategory("");
+                  setFilterCategory(new Set());
                   setFilterCard("");
                   setFilterMember("");
                 }}

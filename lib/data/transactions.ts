@@ -11,7 +11,9 @@ export async function getTransactionsData() {
   const familyId = session.user.memberships[0]?.familyId;
   if (!familyId) return null;
 
-  const [expenses, categories, cards, members] = await Promise.all([
+  let expenses, categories, cards, members;
+  try {
+    [expenses, categories, cards, members] = await Promise.all([
     db.expense.findMany({
       where: { familyId },
       orderBy: [{ billingYm: "desc" }, { date: "desc" }],
@@ -38,7 +40,11 @@ export async function getTransactionsData() {
       where: { familyId },
       select: { userId: true, role: true, user: { select: { id: true, name: true } } },
     }),
-  ]);
+    ]);
+  } catch (e) {
+    console.error("[transactions] DB query error:", e);
+    return null;
+  }
 
   const membersSorted = sortMembersForBudgetDisplay(members);
 

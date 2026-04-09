@@ -78,11 +78,11 @@ export function Sidebar() {
 
   useEffect(() => {
     refreshUnread();
-  }, [refreshUnread]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!notificationsOpen) refreshUnread();
-  }, [notificationsOpen, refreshUnread]);
+  }, [notificationsOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <>

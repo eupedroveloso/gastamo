@@ -12,9 +12,9 @@ function createPrismaClient() {
   // Com uma instância de Pool, PrismaPg usa this.externalPool e reutiliza corretamente.
   const pool = new pg.Pool({
     connectionString: url,
-    max: 5,
-    idleTimeoutMillis: 10_000,
-    connectionTimeoutMillis: 15_000,
+    max: 10,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 20_000,
   });
 
   pool.on("error", (err) => {
