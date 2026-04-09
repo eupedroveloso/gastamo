@@ -29,6 +29,7 @@ export default function DashboardLayout({
         }}
       >
         <div
+          className="dashboard-layout-inner"
           style={{
             background: "var(--color-bg-subtle)",
             borderRadius: "var(--radius-4xl)",

@@ -108,6 +108,7 @@ export function DashboardPageClient(props: DashboardPageClientProps) {
   const widgets: Record<DashboardWidgetId, React.ReactNode> = {
     budget_column: (
       <div
+        className="budget-column-widget"
         style={{
           height: "100%",
           minHeight: 0,
@@ -119,7 +120,7 @@ export function DashboardPageClient(props: DashboardPageClientProps) {
           borderRadius: "var(--radius-4xl)",
           padding: "var(--space-16)",
           gap: "var(--space-8)",
-          overflow: "auto",
+          overflow: "hidden",
           boxSizing: "border-box",
         }}
       >

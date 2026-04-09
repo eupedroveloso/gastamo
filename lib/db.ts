@@ -1,39 +1,27 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import pg from "pg";
 import { requireDatabaseUrl } from "@/lib/database-url";
 
-/** Evita aviso do pg-connection-string: require/prefer/verify-ca viram verify-full de forma explícita. */
-function normalizePgSslMode(url: string): string {
-  try {
-    const u = new URL(url);
-    const mode = u.searchParams.get("sslmode")?.toLowerCase();
-    if (mode === "prefer" || mode === "require" || mode === "verify-ca") {
-      u.searchParams.set("sslmode", "verify-full");
-      return u.toString();
-    }
-    return url;
-  } catch {
-    return url;
-  }
-}
-
 function createPrismaClient() {
-  const raw = requireDatabaseUrl();
-  const url = normalizePgSslMode(raw);
+  const url = requireDatabaseUrl();
 
-  // Em serverless (Vercel) funções "warm" são reutilizadas entre invocações.
-  // Conexões ociosas no pool ficam abertas e o banco as termina após alguns
-  // minutos — causando "Connection terminated" na próxima query.
-  // Solução: idleTimeoutMillis mínimo (1ms) descarta a conexão imediatamente
-  // após uso, forçando uma nova conexão a cada invocação sem conexões stale.
-  const isServerless = process.env.NODE_ENV === "production";
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const adapter = new PrismaPg({
+  // Cria o pool explicitamente e passa a instância (não PoolConfig).
+  // Quando PrismaPg recebe PoolConfig, cria um Pool novo a cada connect() —
+  // o pool nunca é reutilizado e conexões se acumulam até o limite do servidor.
+  // Com uma instância de Pool, PrismaPg usa this.externalPool e reutiliza corretamente.
+  const pool = new pg.Pool({
     connectionString: url,
-    max: isServerless ? 2 : 10,
-    idleTimeoutMillis: isServerless ? 1 : 30_000,
-    connectionTimeoutMillis: 10_000,
-  } as any);
+    max: 5,
+    idleTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 15_000,
+  });
+
+  pool.on("error", (err) => {
+    console.error("[db] pg pool error:", err.message);
+  });
+
+  const adapter = new PrismaPg(pool);
 
   return new PrismaClient({
     adapter,
