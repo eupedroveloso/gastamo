@@ -1,4 +1,5 @@
 import { Sidebar } from "@/components/sidebar";
+import { MobileNav } from "@/components/mobile-nav";
 
 export default function DashboardLayout({
   children,
@@ -16,9 +17,12 @@ export default function DashboardLayout({
         overflow: "hidden",
       }}
     >
-      <Sidebar />
+      <div className="sidebar-desktop">
+        <Sidebar />
+      </div>
 
       <main
+        className="dashboard-main"
         style={{
           flex: 1,
           padding: "var(--space-24) var(--space-24) var(--space-16) 0",
@@ -44,6 +48,8 @@ export default function DashboardLayout({
           {children}
         </div>
       </main>
+
+      <MobileNav />
     </div>
   );
 }

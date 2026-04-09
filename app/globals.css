@@ -159,3 +159,195 @@ body {
     overflow: hidden !important;
   }
 }
+
+/* ── Mobile layout (≤ 768px) ── */
+.mobile-nav-bar {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  /* ── Sidebar / nav ── */
+  .sidebar-desktop {
+    display: none !important;
+  }
+
+  .mobile-nav-bar {
+    display: flex !important;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: #0a0a0a;
+    padding: 8px 16px env(safe-area-inset-bottom, 16px);
+    align-items: center;
+  }
+
+  /* ── Dashboard main area ── */
+  .dashboard-main {
+    padding: 0 !important;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .dashboard-page-header {
+    padding: 0 0 8px !important;
+  }
+
+  .dashboard-greeting {
+    font-size: 24px !important;
+  }
+
+  .dashboard-header-actions {
+    justify-content: flex-start !important;
+    width: 100% !important;
+  }
+
+  .dashboard-layout-inner {
+    border-radius: 0 !important;
+    padding: 16px 16px 88px !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+  }
+
+  /* On mobile ≤768 re-do the grid layout (overrides the 900px block) */
+  .dashboard-layout-inner > .dashboard-widgets-grid {
+    flex: none !important;
+    display: flex !important;
+    flex-direction: column !important;
+    grid-template-columns: unset !important;
+    gap: 12px !important;
+  }
+
+  .dashboard-layout-inner > .dashboard-widgets-grid > .dashboard-widget-slot:first-child {
+    flex: none !important;
+    height: auto !important;
+    min-height: 0 !important;
+    grid-column: unset !important;
+    grid-row: unset !important;
+  }
+
+  .budget-column-widget {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  /* Show the donut chart slot on mobile */
+  .dashboard-bottom-row {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+    grid-column: unset !important;
+    grid-row: unset !important;
+  }
+
+  /* Show only divisao_orcamento (donut chart) on mobile; hide others */
+  .dashboard-bottom-slot-divisao_orcamento {
+    display: flex !important;
+    flex: none !important;
+    min-height: 0 !important;
+  }
+
+  .dashboard-bottom-slot-gasto_pagamento,
+  .dashboard-bottom-slot-limite_categoria {
+    display: none !important;
+  }
+
+  /* ── Login page ── */
+  .login-outer {
+    flex-direction: column !important;
+    overflow-y: auto !important;
+    height: auto !important;
+    min-height: 100vh !important;
+  }
+
+  .login-illustration {
+    width: 100% !important;
+    height: 260px !important;
+    padding: 16px !important;
+    flex-shrink: 0 !important;
+  }
+
+  .login-form-col {
+    width: 100% !important;
+    padding: 24px 20px 48px !important;
+    align-items: flex-start !important;
+    justify-content: flex-start !important;
+  }
+
+  .login-form {
+    width: 100% !important;
+    max-width: 480px !important;
+  }
+
+  .login-form h1 {
+    font-size: 40px !important;
+  }
+
+  /* ── Transactions ── */
+
+  /* Hide search/filter/import/month controls on mobile (FAB handles add) */
+  .txn-desktop-controls {
+    display: none !important;
+  }
+
+  /* Show mobile FAB */
+  .txn-mobile-fab {
+    display: flex !important;
+  }
+
+  /* Stats row: smaller cards stacked horizontally */
+  .txn-stats-row > div {
+    padding: 16px !important;
+  }
+
+  .txn-stats-row > div > span:last-child {
+    font-size: 32px !important;
+  }
+
+  /* Table: show only Name (col 2), Type (col 3), Value (col 9) */
+  .txn-table-header-row,
+  .txn-table-row {
+    grid-template-columns: minmax(120px, 2fr) 80px 88px !important;
+    padding: 12px 16px !important;
+    gap: 8px !important;
+  }
+
+  /* Hide: checkbox(1), category(4), card(5), responsible(6), month(7), date(8), actions(10) */
+  .txn-table-header-row > *:nth-child(1),
+  .txn-table-row > *:nth-child(1),
+  .txn-table-header-row > *:nth-child(4),
+  .txn-table-row > *:nth-child(4),
+  .txn-table-header-row > *:nth-child(5),
+  .txn-table-row > *:nth-child(5),
+  .txn-table-header-row > *:nth-child(6),
+  .txn-table-row > *:nth-child(6),
+  .txn-table-header-row > *:nth-child(7),
+  .txn-table-row > *:nth-child(7),
+  .txn-table-header-row > *:nth-child(8),
+  .txn-table-row > *:nth-child(8),
+  .txn-table-header-row > *:nth-child(10),
+  .txn-table-row > *:nth-child(10) {
+    display: none !important;
+  }
+
+  /* Add padding at bottom for mobile nav */
+  .txn-table-body {
+    padding-bottom: 88px !important;
+  }
+
+  /* SlidePanel becomes a bottom sheet on mobile */
+  .slide-panel {
+    top: auto !important;
+    right: 0 !important;
+    left: 0 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    border-left: none !important;
+    border-radius: 32px 32px 0 0 !important;
+    animation: slideUp 0.25s ease-out !important;
+    max-height: 92vh !important;
+    overflow-y: auto !important;
+  }
+}

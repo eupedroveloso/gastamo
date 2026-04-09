@@ -10,6 +10,7 @@ export default function LoginPage() {
 
   return (
     <div
+      className="login-outer"
       style={{
         display: "flex",
         width: "100%",
@@ -18,7 +19,7 @@ export default function LoginPage() {
       }}
     >
       {/* Left Column */}
-      <div style={{ width: "50%", padding: "var(--space-16)" }}>
+      <div className="login-illustration" style={{ width: "50%", padding: "var(--space-16)" }}>
         <div
           style={{
             width: "100%",
@@ -41,6 +42,7 @@ export default function LoginPage() {
 
       {/* Right Column */}
       <div
+        className="login-form-col"
         style={{
           width: "50%",
           display: "flex",
@@ -51,6 +53,7 @@ export default function LoginPage() {
       >
         <form
           action={formAction}
+          className="login-form"
           style={{
             width: 322,
             display: "flex",

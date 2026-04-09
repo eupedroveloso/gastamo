@@ -496,6 +496,7 @@ export function DashboardPageClient(props: DashboardPageClientProps) {
   return (
     <>
       <div
+        className="dashboard-page-header"
         style={{
           display: "flex",
           flexDirection: "column",
@@ -517,6 +518,7 @@ export function DashboardPageClient(props: DashboardPageClientProps) {
           }}
         >
           <h1
+            className="dashboard-greeting"
             style={{
               flex: "1 1 200px",
               minWidth: 0,
@@ -531,6 +533,7 @@ export function DashboardPageClient(props: DashboardPageClientProps) {
             Olá {user.name.split(" ")[0]}
           </h1>
           <div
+            className="dashboard-header-actions"
             style={{
               display: "flex",
               flexWrap: "wrap",
@@ -599,6 +602,7 @@ export function DashboardPageClient(props: DashboardPageClientProps) {
           {DASHBOARD_BOTTOM_ROW.ids.map((id) => (
             <div
               key={id}
+              className={`dashboard-bottom-slot dashboard-bottom-slot-${id}`}
               style={{
                 flex: "1 1 0",
                 minWidth: 0,

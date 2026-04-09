@@ -421,6 +421,7 @@ function SlidePanel({ children, onClose }: { children: React.ReactNode; onClose:
     <>
       <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.3)", zIndex: 40 }} />
       <div
+        className="slide-panel"
         style={{
           position: "fixed", top: 0, right: 0, bottom: 0, width: 410, zIndex: 50,
           background: "var(--color-bg-default)", borderLeft: "1px solid var(--color-border-muted)",
@@ -429,7 +430,7 @@ function SlidePanel({ children, onClose }: { children: React.ReactNode; onClose:
       >
         {children}
       </div>
-      <style>{`@keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
+      <style>{`@keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } } @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }`}</style>
     </>
   );
 }
@@ -635,11 +636,14 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
             padding: "8px 0 8px 16px",
           }}
         >
-          <span style={{ fontWeight: 400, fontSize: 16, color: "#0A0A0A", whiteSpace: "nowrap", lineHeight: 1.5 }}>
-            Gastos do mês
-          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontWeight: 400, fontSize: 16, color: "#0A0A0A", whiteSpace: "nowrap", lineHeight: 1.5 }}>
+              Gastos do mês
+            </span>
+          </div>
 
           <div
+            className="txn-desktop-controls"
             style={{
               display: "flex",
               alignItems: "center",
@@ -845,6 +849,7 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
 
         {/* Resumo: quantidade e total (Design System — frame com dois cards) */}
         <div
+          className="txn-stats-row"
           style={{
             display: "flex",
             flexDirection: "row",
@@ -970,6 +975,7 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
 
         {/* Table Header */}
         <div
+          className="txn-table-header-row"
           style={{
             display: "grid",
             gridTemplateColumns: COL_TEMPLATE,
@@ -1054,6 +1060,7 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
                 return (
                   <div
                     key={expense.id}
+                    className="txn-table-row"
                     style={{
                       display: "grid",
                       gridTemplateColumns: COL_TEMPLATE,
@@ -1218,6 +1225,32 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
           </div>
         </div>
       </div>
+
+      {/* ── Mobile FAB ── */}
+      <button
+        type="button"
+        className="txn-mobile-fab"
+        onClick={() => { setEditingExpense(null); setPanelMode("add"); }}
+        style={{
+          display: "none",
+          position: "fixed",
+          bottom: 90,
+          right: 20,
+          zIndex: 50,
+          width: 56,
+          height: 56,
+          borderRadius: "50%",
+          background: "#0F8F4E",
+          border: "none",
+          cursor: "pointer",
+          alignItems: "center",
+          justifyContent: "center",
+          boxShadow: "0 4px 16px rgba(15, 143, 78, 0.4)",
+        }}
+        aria-label="Novo Gasto"
+      >
+        <PlusIcon size={24} color="#FFFFFF" />
+      </button>
 
       {/* ── Panels ── */}
       {panelMode === "add" && (
