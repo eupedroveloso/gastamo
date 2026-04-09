@@ -9,8 +9,10 @@ import { sortMembersForBudgetDisplay } from "@/lib/member-display-order";
 export interface FinancialContext {
   userName: string;
   familyName: string;
+  familyId: string;
   currentMonth: string;
   currentYear: number;
+  currentBillingYm: string;
   budget: number;
   totalSpentThisMonth: number;
   remainingBudget: number;
@@ -23,6 +25,7 @@ export interface FinancialContext {
   };
 
   categories: {
+    id: string;
     name: string;
     spent: number;
     limit: number;
@@ -34,29 +37,18 @@ export interface FinancialContext {
     amount: number;
     type: string;
     category: string;
-    card: string;
-    responsible: string;
-    date: string;
-  }[];
-
-  allExpensesThisMonth: {
-    name: string;
-    amount: number;
-    type: string;
-    category: string;
-    card: string;
     responsible: string;
     date: string;
   }[];
 
   members: {
+    id: string;
     name: string;
     spent: number;
     percentOfTotal: number;
   }[];
 
-  cards: string[];
-  categoriesAvailable: string[];
+  cards: { id: string; name: string }[];
 }
 
 
@@ -153,6 +145,7 @@ export async function buildFinancialContext(): Promise<FinancialContext | null> 
   const categories = (family.categories as FamilyCategory[]).map((cat: FamilyCategory) => {
     const spent = categorySpendMap.get(cat.id) ?? 0;
     return {
+      id: cat.id,
       name: cat.name,
       spent,
       limit: cat.limitAmount,
@@ -165,17 +158,6 @@ export async function buildFinancialContext(): Promise<FinancialContext | null> 
     amount: e.amount,
     type: e.type,
     category: e.category?.name ?? "Sem categoria",
-    card: e.card?.name ?? "Sem pagamento",
-    responsible: e.responsible.name,
-    date: formatDateBrazil(e.date),
-  }));
-
-  const allExpensesThisMonth = (monthExpenses as Expense[]).map((e: Expense) => ({
-    name: e.name,
-    amount: e.amount,
-    type: e.type,
-    category: e.category?.name ?? "Sem categoria",
-    card: e.card?.name ?? "Sem pagamento",
     responsible: e.responsible.name,
     date: formatDateBrazil(e.date),
   }));
@@ -184,6 +166,7 @@ export async function buildFinancialContext(): Promise<FinancialContext | null> 
   const members = membersOrdered.map((m: FamilyMember) => {
     const spent = memberSpendMap.get(m.userId) ?? 0;
     return {
+      id: m.userId,
       name: m.user.name,
       spent,
       percentOfTotal: totalSpent > 0 ? Math.round((spent / totalSpent) * 100) : 0,
@@ -198,8 +181,10 @@ export async function buildFinancialContext(): Promise<FinancialContext | null> 
   return {
     userName: session.user.name.split(" ")[0],
     familyName: family.name,
+    familyId: family.id,
     currentMonth: monthNames[monthIndex],
     currentYear,
+    currentBillingYm,
     budget,
     totalSpentThisMonth: totalSpent,
     remainingBudget: remaining,
@@ -207,10 +192,11 @@ export async function buildFinancialContext(): Promise<FinancialContext | null> 
     typeBreakdown,
     categories,
     topExpenses,
-    allExpensesThisMonth,
     members,
-    cards: (family.cards as { name: string }[]).map((c: { name: string }) => c.name),
-    categoriesAvailable: (family.categories as { name: string }[]).map((c: { name: string }) => c.name),
+    cards: (family.cards as { id: string; name: string }[]).map((c) => ({
+      id: c.id,
+      name: c.name,
+    })),
   };
 }
 
