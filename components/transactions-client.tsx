@@ -434,14 +434,16 @@ function SlidePanel({ children, onClose }: { children: React.ReactNode; onClose:
   );
 }
 
-function MultiCategorySelect({
-  categories,
+function MultiSelect({
+  items,
   selected,
   onChange,
+  allLabel = "Todos",
 }: {
-  categories: { id: string; name: string }[];
+  items: { value: string; label: string }[];
   selected: Set<string>;
   onChange: (next: Set<string>) => void;
+  allLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -455,17 +457,17 @@ function MultiCategorySelect({
     return () => document.removeEventListener("mousedown", handleClick);
   }, [open]);
 
-  const toggle = (id: string) => {
+  const toggle = (value: string) => {
     const next = new Set(selected);
-    if (next.has(id)) next.delete(id); else next.add(id);
+    if (next.has(value)) next.delete(value); else next.add(value);
     onChange(next);
   };
 
   const label = selected.size === 0
-    ? "Todas"
+    ? allLabel
     : selected.size === 1
-      ? categories.find((c) => selected.has(c.id))?.name ?? "1 selecionada"
-      : `${selected.size} selecionadas`;
+      ? items.find((i) => selected.has(i.value))?.label ?? "1 selecionado"
+      : `${selected.size} selecionados`;
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
@@ -484,18 +486,18 @@ function MultiCategorySelect({
           background: "#FFFFFF", border: "1px solid #E5E5E5", borderRadius: 12,
           boxShadow: "0 4px 16px rgba(0,0,0,0.08)", padding: "4px 0", minWidth: 160,
         }}>
-          {categories.map((c) => (
+          {items.map((item) => (
             <label
-              key={c.id}
+              key={item.value}
               style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 12px", cursor: "pointer", fontSize: 13, color: "#0A0A0A", fontFamily: "inherit" }}
             >
               <input
                 type="checkbox"
-                checked={selected.has(c.id)}
-                onChange={() => toggle(c.id)}
+                checked={selected.has(item.value)}
+                onChange={() => toggle(item.value)}
                 style={{ accentColor: "var(--color-bg-brand-strong)", cursor: "pointer" }}
               />
-              {c.name}
+              {item.label}
             </label>
           ))}
         </div>
@@ -511,10 +513,10 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
   const [search, setSearch] = useState("");
   const [filterMonth, setFilterMonth] = useState(() => getTodayBrazilYMD().slice(0, 7));
   const [showFilterPanel, setShowFilterPanel] = useState(false);
-  const [filterType, setFilterType] = useState("");
+  const [filterType, setFilterType] = useState<Set<string>>(new Set());
   const [filterCategory, setFilterCategory] = useState<Set<string>>(new Set());
-  const [filterCard, setFilterCard] = useState("");
-  const [filterMember, setFilterMember] = useState("");
+  const [filterCard, setFilterCard] = useState<Set<string>>(new Set());
+  const [filterMember, setFilterMember] = useState<Set<string>>(new Set());
   const [filterDateStart, setFilterDateStart] = useState("");
   const [filterDateEnd, setFilterDateEnd] = useState("");
 
@@ -571,10 +573,10 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
         if (!inName && !inInvoice && !inCardId && !inCardName && !inAmount) return false;
       }
       if (filterMonth && e.billingYm !== filterMonth) return false;
-      if (filterType && e.type !== filterType) return false;
+      if (filterType.size > 0 && !filterType.has(e.type)) return false;
       if (filterCategory.size > 0 && !filterCategory.has(e.category?.id ?? "")) return false;
-      if (filterCard && e.card?.id !== filterCard) return false;
-      if (filterMember && e.responsible.id !== filterMember) return false;
+      if (filterCard.size > 0 && !filterCard.has(e.card?.id ?? "")) return false;
+      if (filterMember.size > 0 && !filterMember.has(e.responsible.id)) return false;
       if (filterDateStart || filterDateEnd) {
         const expYmd = toBrazilCalendarYMD(e.date);
         if (filterDateStart && expYmd < filterDateStart) return false;
@@ -605,9 +607,9 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
     return { filteredCount: count, filteredAmountSum: total };
   }, [filtered]);
 
-  const hasActiveFilters = Boolean(filterType) || filterCategory.size > 0 || Boolean(filterCard) || Boolean(filterMember) || Boolean(filterDateStart) || Boolean(filterDateEnd);
+  const hasActiveFilters = filterType.size > 0 || filterCategory.size > 0 || filterCard.size > 0 || filterMember.size > 0 || Boolean(filterDateStart) || Boolean(filterDateEnd);
   const currentMonth = getTodayBrazilYMD().slice(0, 7);
-  const activeFilterCount = [filterType, filterCard, filterMember, filterDateStart, filterDateEnd].filter(Boolean).length + (filterCategory.size > 0 ? 1 : 0);
+  const activeFilterCount = [filterType.size > 0, filterCategory.size > 0, filterCard.size > 0, filterMember.size > 0, Boolean(filterDateStart), Boolean(filterDateEnd)].filter(Boolean).length;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8, height: "100%" }}>
@@ -753,54 +755,34 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
           >
             {/* Linha 1: selects de tipo/categoria/cartão/responsável */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 16, alignItems: "end" }}>
-              {(
-                [
-                  {
-                    label: "Tipo",
-                    value: filterType,
-                    set: setFilterType,
-                    options: EXPENSE_TYPES.map((t) => ({ value: t.value, label: t.label })),
-                    all: "Todos",
-                  },
-                  {
-                    label: "Cartão",
-                    value: filterCard,
-                    set: setFilterCard,
-                    options: cards.map((c) => ({ value: c.id, label: c.name })),
-                    all: "Todos",
-                  },
-                  {
-                    label: "Responsável",
-                    value: filterMember,
-                    set: setFilterMember,
-                    options: members.map((m) => ({ value: m.userId, label: m.name })),
-                    all: "Todos",
-                  },
-                ] as const
-              ).map((f) => (
-                <div key={f.label} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: "#525252" }}>{f.label}</label>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#FFFFFF", border: "1px solid #F5F5F5", borderRadius: 12, padding: "6px 10px" }}>
-                    <select
-                      value={f.value}
-                      onChange={(e) => f.set(e.target.value)}
-                      style={{ border: "none", outline: "none", background: "transparent", fontSize: 13, color: "#0A0A0A", fontFamily: "inherit", width: "100%", cursor: "pointer", ...selectResetStyle }}
-                    >
-                      <option value="">{f.all}</option>
-                      {f.options.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDownIcon size={14} color="#A3A3A3" />
-                  </div>
-                </div>
-              ))}
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#525252" }}>Tipo</label>
+                <MultiSelect
+                  items={EXPENSE_TYPES.map((t) => ({ value: t.value, label: t.label }))}
+                  selected={filterType}
+                  onChange={setFilterType}
+                />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#525252" }}>Cartão</label>
+                <MultiSelect
+                  items={cards.map((c) => ({ value: c.id, label: c.name }))}
+                  selected={filterCard}
+                  onChange={setFilterCard}
+                />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#525252" }}>Responsável</label>
+                <MultiSelect
+                  items={members.map((m) => ({ value: m.userId, label: m.name }))}
+                  selected={filterMember}
+                  onChange={setFilterMember}
+                />
+              </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 <label style={{ fontSize: 12, fontWeight: 600, color: "#525252" }}>Categoria</label>
-                <MultiCategorySelect
-                  categories={categories}
+                <MultiSelect
+                  items={categories.map((c) => ({ value: c.id, label: c.name }))}
                   selected={filterCategory}
                   onChange={setFilterCategory}
                 />
@@ -830,10 +812,10 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
               <button
                 type="button"
                 onClick={() => {
-                  setFilterType("");
+                  setFilterType(new Set());
                   setFilterCategory(new Set());
-                  setFilterCard("");
-                  setFilterMember("");
+                  setFilterCard(new Set());
+                  setFilterMember(new Set());
                   setFilterDateStart("");
                   setFilterDateEnd("");
                 }}
@@ -1223,10 +1205,10 @@ export function TransactionsClient({ expenses, categories, cards, members }: Pro
                 onClick={() => {
                   setSearch("");
                   setFilterMonth(currentMonth);
-                  setFilterType("");
+                  setFilterType(new Set());
                   setFilterCategory(new Set());
-                  setFilterCard("");
-                  setFilterMember("");
+                  setFilterCard(new Set());
+                  setFilterMember(new Set());
                 }}
                 style={{ fontSize: 12, color: "#A3A3A3", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit" }}
               >
